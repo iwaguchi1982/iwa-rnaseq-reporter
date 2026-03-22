@@ -1,0 +1,20 @@
+[project]
+name = "iwa-rnaseq-reporter"
+version = "0.1.0"
+description = "Wet-first RNA-Seq reporter"
+authors = ["Jun Iwaguchi"]
+channels = ["conda-forge", "bioconda"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = ">=3.11,<3.13"
+pandas = ">=2.2.0,<3"
+streamlit = ">=1.44.0,<2"
+biopython = ">=1.84,<2"
+psutil = ">=7.0.0,<8"
+pyyaml = ">=6.0.2,<7"
+pytest = ">=8.0.0,<9"
+
+[tasks]
+app = "streamlit run iwa_rnaseq_reporter.py"
+test = "pytest"

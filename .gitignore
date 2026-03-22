@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.venv/
+.pixi/
+.env
+.streamlit/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.vscode/
+.idea/
+.DS_Store
+
+run_results/
+results/
+logs/
+*.log
