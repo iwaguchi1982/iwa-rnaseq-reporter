@@ -518,16 +518,23 @@ if "dataset" in st.session_state:
     st.header("13. DEG Comparison Design")
 
     if analysis_matrix is not None:
+        st.info(
+            f"Comparison design uses the current analysis matrix and included samples.  \n"
+            f"**Current Settings:** `{matrix_kind}` / `log2p1={log2p1}` / `use_exclude={use_exclude}` / "
+            f"`min_nonzero={min_feature_nonzero_samples}` / `min_mean={min_feature_mean}`"
+        )
+
         comparison_sample_table = build_analysis_sample_table(
             ds,
             matrix_kind=matrix_kind,
             use_exclude=use_exclude,
         )
 
+        # In v0.1.4, candidate columns are explicitly derived from included samples
         comparison_candidate_columns = get_comparison_candidate_columns(comparison_sample_table)
 
         if not comparison_candidate_columns:
-            st.info("No comparison-ready metadata columns were found.")
+            st.warning("No comparison-ready metadata columns were found among the currently included samples.")
             deg_input_obj = None
         else:
             d1, d2, d3 = st.columns(3)
@@ -539,18 +546,18 @@ if "dataset" in st.session_state:
                 )
 
             group_summary = summarize_groups(comparison_sample_table, comparison_column)
-            valid_group_names = [
-                str(g) for g in group_summary["group_name"].fillna("").astype(str).tolist()
-                if str(g).strip() != ""
-            ]
+            valid_group_names = group_summary["group_name"].tolist()
 
             if len(valid_group_names) < 2:
-                st.warning("Selected comparison column does not have at least 2 non-empty groups.")
+                st.warning(
+                    f"Selected column '{comparison_column}' does not have at least 2 non-empty groups "
+                    "in the current analysis set."
+                )
                 deg_input_obj = None
             else:
                 with d2:
                     group_a = st.selectbox(
-                        "Group A",
+                        "Group A (Case)",
                         options=valid_group_names,
                         index=0,
                     )
@@ -558,12 +565,12 @@ if "dataset" in st.session_state:
                 remaining_groups = [g for g in valid_group_names if g != group_a]
                 with d3:
                     group_b = st.selectbox(
-                        "Group B",
+                        "Group B (Control)",
                         options=remaining_groups,
                         index=0 if remaining_groups else None,
                     )
 
-                st.subheader("Group Summary")
+                st.subheader("Group Summary (Included Samples)")
                 st.dataframe(format_display_df(group_summary), use_container_width=True)
 
                 try:

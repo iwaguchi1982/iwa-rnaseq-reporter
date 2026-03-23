@@ -1,34 +1,59 @@
-# iwa-rnaseq-reporter v0.1.3
+# iwa-rnaseq-reporter v0.1.0
 
-## Overview
+初回公開版です。
 
-`v0.1.3` extends the reporter from dataset loading and validation to exploratory analysis and comparison scaffolding.
+## 概要
+
+`iwa-rnaseq-reporter v0.1.0` は、`iwa-rnaseq-counter` の出力 dataset を読み込み、  
+dataset 単位の整合確認と preview を行うための最初のリリースです。
+
+本バージョンは、**report 自動生成本体ではなく、reader / validator / preview UI** に焦点を当てています。
+
+---
 
 ## Added
 
-- analysis matrix setup
-  - matrix kind selection
-  - `exclude` handling
-  - `log2(x+1)` option
-  - feature filtering (`min nonzero samples`, `min feature mean`)
-- PCA preview
-- sample correlation preview
-- gene / feature search
-- top variable features table
-- DEG comparison design scaffold
-- DEG preview table scaffold
+- `dataset_manifest.json` を入口とした dataset loader
+- run directory / results directory / manifest file の自動解決
+- required / optional files の存在確認
+- `sample_metadata.csv` 読込
+- `sample_qc_summary.csv` 読込
+- `gene_tpm.csv` / `gene_numreads.csv` 読込
+- `transcript_tpm.csv` / `transcript_numreads.csv` の optional 読込
+- sample ID consistency validation
+- validation messages 表示
+- Load Status UI
+- Dataset Overview UI
+- Sample Metadata preview
+- Sample QC Summary preview
+- pytest ベースの loader / validator / manifest / normalizer テスト基盤
 
-## Notes
+---
 
-- `DEG Preview Table` is a preview layer only
-- statistical testing (`p-value`, `adjusted p-value`) is not implemented yet
-- comparison design requires comparison-ready metadata columns such as `group` or `condition`
+## Supported contract
+
+主に `iwa-rnaseq-counter v0.1.7` の出力 contract を想定しています。
+
+---
+
+## Known limitations
+
+- PCA 未実装
+- correlation 未実装
+- DEG 未実装
+- enrichment 未実装
+- PDF / HTML export 未実装
+- transcript-level 専用可視化は未実装
+- QC 指標の高度な解釈は今後の課題
+
+---
 
 ## Positioning
 
-This release establishes `iwa-rnaseq-reporter` as:
+このバージョンは、`iwa-rnaseq-reporter` を
 
 - contract reader
 - dataset validator
-- exploratory analysis UI
-- comparison design scaffold
+- preview UI
+
+として成立させるための初期マイルストーンです。

@@ -1,6 +1,5 @@
-# iwa-rnaseq-reporter
 > **Note**  
-> `v0.1.3` is an exploratory reader / validator / analysis-preview release.  
+> `v0.1.4` is an exploratory reader / validator / analysis-preview release.  
 > Statistical DEG testing and report export are not included yet.
 
 `iwa-rnaseq-reporter` は、`iwa-rnaseq-counter` が出力した RNA-Seq 定量結果セットを読み込み、  
