@@ -21,8 +21,7 @@ class DEGInput:
 def get_comparison_candidate_columns(sample_table: pd.DataFrame) -> list[str]:
     """
     Return metadata columns that are usable for comparison grouping.
-    NOTE: Input should be an analysis_sample_table. 
-    Only samples where 'analysis_included' is True are considered.
+    Strictly filters based on 'analysis_included' samples.
     """
     excluded = {
         "sample_id",
@@ -35,10 +34,12 @@ def get_comparison_candidate_columns(sample_table: pd.DataFrame) -> list[str]:
     }
 
     if "analysis_included" not in sample_table.columns:
-        # Fallback if called with raw metadata, but not recommended for v0.1.4
         active_samples = sample_table.copy()
     else:
         active_samples = sample_table.loc[sample_table["analysis_included"]].copy()
+
+    if active_samples.empty:
+        return []
 
     candidates = []
     for col in active_samples.columns:
@@ -49,7 +50,11 @@ def get_comparison_candidate_columns(sample_table: pd.DataFrame) -> list[str]:
         nonempty = values[values != ""]
         unique_vals = sorted(nonempty.unique().tolist())
 
-        if len(unique_vals) >= 2:
+        # Stricter criteria for v0.1.5:
+        # 1. At least 2 groups
+        # 2. Not all unique (at least some repetition)
+        # 3. Sufficiently non-empty
+        if len(unique_vals) >= 2 and len(unique_vals) < len(nonempty):
             candidates.append(col)
 
     return candidates
@@ -58,7 +63,7 @@ def get_comparison_candidate_columns(sample_table: pd.DataFrame) -> list[str]:
 def summarize_groups(sample_table: pd.DataFrame, column: str) -> pd.DataFrame:
     """
     Summarize group counts for a comparison column.
-    Focuses on 'analysis_included' samples.
+    Only counts 'analysis_included' samples with non-empty group names.
     """
     if column not in sample_table.columns:
         raise ValueError(f"Column not found in sample_table: {column}")
@@ -66,15 +71,15 @@ def summarize_groups(sample_table: pd.DataFrame, column: str) -> pd.DataFrame:
     x = sample_table.copy()
     x[column] = x[column].fillna("").astype(str).str.strip()
     
-    # We only count samples that are included in analysis
-    # and have a non-empty group name.
     included = x.loc[x["analysis_included"] & (x[column] != "")].copy()
+
+    if included.empty:
+        return pd.DataFrame(columns=["group_name", "n_included"])
 
     summary = (
         included.groupby(column, dropna=False)
         .agg(
             n_included=("analysis_included", "count"),
-            # We could add n_total here if we want to show how many were excluded
         )
         .reset_index()
         .rename(columns={column: "group_name"})
@@ -83,6 +88,32 @@ def summarize_groups(sample_table: pd.DataFrame, column: str) -> pd.DataFrame:
     )
 
     return summary
+
+
+def build_group_summary(deg_input: DEGInput) -> pd.DataFrame:
+    """
+    UI Helper: Generate a group summary table from DEGInput.
+    """
+    summary = deg_input.sample_table.groupby(deg_input.group_column).agg(
+        n_samples=("sample_id", "count")
+    ).reset_index().rename(columns={deg_input.group_column: "group_name"})
+    
+    return summary.sort_values("group_name").reset_index(drop=True)
+
+
+def build_comparison_sample_table(deg_input: DEGInput) -> pd.DataFrame:
+    """
+    UI Helper: Extract comparison sample metadata.
+    Ensures columns like replicate/exclude are included if available.
+    """
+    cols = ["sample_id", "display_name", deg_input.group_column]
+    optional = ["replicate", "batch", "exclude", "pair_id", "note"]
+    
+    for c in optional:
+        if c in deg_input.sample_table.columns and c not in cols:
+            cols.append(c)
+            
+    return deg_input.sample_table[cols].copy()
 
 
 def build_deg_input(
@@ -98,9 +129,11 @@ def build_deg_input(
 ) -> DEGInput:
     """
     Build a comparison-ready DEGInput object from current dataset settings.
-    This is the Source of Truth for the DEG section.
+    Ensures strict alignment between matrix columns and sample records.
     """
-    # 1. Build the master analysis matrix
+    if group_a == group_b:
+        raise ValueError("Group A and Group B must be different.")
+
     analysis_matrix = build_analysis_matrix(
         ds,
         matrix_kind=matrix_kind,
@@ -110,7 +143,6 @@ def build_deg_input(
         min_feature_mean=min_feature_mean,
     )
 
-    # 2. Build the analysis sample table
     analysis_sample_table = build_analysis_sample_table(
         ds,
         matrix_kind=matrix_kind,
@@ -124,19 +156,22 @@ def build_deg_input(
         analysis_sample_table[group_column].fillna("").astype(str).str.strip()
     )
 
-    # 3. Select samples belonging to Group A or Group B (ONLY from included samples)
     comparison_samples = analysis_sample_table.loc[
         analysis_sample_table["analysis_included"] & 
         analysis_sample_table[group_column].isin([group_a, group_b])
     ].copy()
 
     if comparison_samples.empty:
-        raise ValueError("No samples selected for the requested comparison.")
+        raise ValueError(f"No samples matched groups '{group_a}' or '{group_b}' in the current analysis subset.")
+
+    # Sort samples by group A first, then group B to keep things organized
+    comparison_samples["_sort_group"] = comparison_samples[group_column].apply(
+        lambda g: 0 if g == group_a else 1
+    )
+    comparison_samples = comparison_samples.sort_values(["_sort_group", "sample_id"]).drop(columns=["_sort_group"])
 
     selected_ids = comparison_samples["sample_id"].astype(str).tolist()
 
-    # 4. Subset matrix to the comparison samples
-    # We use .loc to ensure the order of columns matches selected_ids
     feature_matrix = analysis_matrix.loc[:, selected_ids].copy()
 
     group_a_samples = comparison_samples.loc[
@@ -146,6 +181,11 @@ def build_deg_input(
     group_b_samples = comparison_samples.loc[
         comparison_samples[group_column] == group_b, "sample_id"
     ].astype(str).tolist()
+
+    if not group_a_samples:
+        raise ValueError(f"No samples found for group A: '{group_a}' in the current analysis subset.")
+    if not group_b_samples:
+        raise ValueError(f"No samples found for group B: '{group_b}' in the current analysis subset.")
 
     return DEGInput(
         matrix_kind=matrix_kind,
@@ -171,10 +211,10 @@ def validate_deg_input(
     if deg_input.feature_matrix.empty:
         issues.append("Feature matrix is empty.")
 
-    if len(deg_input.group_a_samples) == 0:
+    if not deg_input.group_a_samples:
         issues.append(f"No samples in group A: {deg_input.group_a}")
 
-    if len(deg_input.group_b_samples) == 0:
+    if not deg_input.group_b_samples:
         issues.append(f"No samples in group B: {deg_input.group_b}")
 
     if len(deg_input.group_a_samples) < min_samples_per_group:
@@ -187,14 +227,14 @@ def validate_deg_input(
             f"Group B has fewer than {min_samples_per_group} samples: {deg_input.group_b} ({len(deg_input.group_b_samples)})"
         )
 
-    # Internal consistency check
-    expected_ids = set(deg_input.group_a_samples + deg_input.group_b_samples)
-    matrix_ids = set(map(str, deg_input.feature_matrix.columns))
-    table_ids = set(map(str, deg_input.sample_table["sample_id"]))
-    
-    if expected_ids != matrix_ids:
-        issues.append("Internal Error: Feature matrix columns mismatch selected group samples.")
-    if expected_ids != table_ids:
-        issues.append("Internal Error: Sample table mismatch selected group samples.")
+    # Internal Alignment Checks
+    matrix_ids = list(map(str, deg_input.feature_matrix.columns))
+    table_ids = list(map(str, deg_input.sample_table["sample_id"]))
+    combined_selected = deg_input.group_a_samples + deg_input.group_b_samples
+
+    if matrix_ids != table_ids:
+        issues.append("Internal Error: Feature matrix columns and Sample table order mismatch.")
+    if set(matrix_ids) != set(combined_selected):
+        issues.append("Internal Error: Feature matrix columns and selected Group IDs mismatch.")
 
     return issues

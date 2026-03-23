@@ -35,6 +35,8 @@ from src.deg_input import (
     summarize_groups,
     build_deg_input,
     validate_deg_input,
+    build_group_summary,
+    build_comparison_sample_table,
 )
 from src.deg_preview import (
     build_deg_preview_table,
@@ -571,6 +573,8 @@ if "dataset" in st.session_state:
                     )
 
                 st.subheader("Group Summary (Included Samples)")
+                # UI Refinement: Use the helper to generate the summary for the active design
+                # Note: valid_group_names is still needed for selectbox options
                 st.dataframe(format_display_df(group_summary), use_container_width=True)
 
                 try:
@@ -602,8 +606,9 @@ if "dataset" in st.session_state:
                         st.success("Comparison design looks ready for DEG preview.")
 
                     with st.expander("Comparison Sample Table", expanded=False):
+                        # UI Refinement: Use helper to extract relevant metadata for comparison samples
                         st.dataframe(
-                            format_display_df(deg_input_obj.sample_table),
+                            format_display_df(build_comparison_sample_table(deg_input_obj)),
                             use_container_width=True,
                         )
 
@@ -620,7 +625,8 @@ if "dataset" in st.session_state:
 
     if deg_input_obj is not None:
         try:
-            sort_options = ["abs_log2_fc", "log2_fc", "mean_group_a", "mean_group_b"]
+            # UI Refinement: Added abs_log2_fc as the primary sort option
+            sort_options = ["abs_log2_fc", "log2_fc", "mean_group_a", "mean_group_b", "feature_id"]
             p1, p2 = st.columns(2)
             with p1:
                 preview_sort_by = st.selectbox(
@@ -637,26 +643,27 @@ if "dataset" in st.session_state:
                     step=10,
                 )
 
+            # Build preview with direction and rank
             deg_preview_df = build_deg_preview_table(
                 deg_input_obj,
                 sort_by=preview_sort_by,
-                ascending=False,
+                ascending=False if preview_sort_by == "abs_log2_fc" else True,
             )
 
             preview_summary = summarize_deg_preview(deg_preview_df)
 
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("Features", preview_summary["n_features"])
-            c2.metric("Positive log2FC", preview_summary["n_positive_fc"])
-            c3.metric("Negative log2FC", preview_summary["n_negative_fc"])
+            c2.metric("Positive log2FC (Up)", preview_summary["n_positive_fc"])
+            c3.metric("Negative log2FC (Down)", preview_summary["n_negative_fc"])
             c4.metric(
                 "Max |log2FC|",
                 f"{preview_summary['max_abs_log2_fc']:.3f}" if preview_summary["max_abs_log2_fc"] is not None else "NA",
             )
 
             st.caption(
-                "Preview table only. Statistical testing (p-value / adjusted p-value) is not implemented yet. "
-                "DEG Preview Table reflects the currently selected analysis matrix and transform settings."
+                "Preview table only. Statistical testing (p-value) is not implemented yet. "
+                "Rank is based on absolute log2 fold change."
             )
 
             st.dataframe(

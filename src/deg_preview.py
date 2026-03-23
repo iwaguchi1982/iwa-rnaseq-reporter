@@ -12,10 +12,12 @@ def build_deg_preview_table(
     ascending: bool = False,
 ) -> pd.DataFrame:
     """
-    Build a pre-DEG comparison table without statistical testing.
+    Build a pre-DEG comparison table with direction and rank.
 
     Output columns:
+    - rank (based on abs_log2_fc)
     - feature_id
+    - direction (Up / Down)
     - mean_group_a
     - mean_group_b
     - log2_fc
@@ -26,7 +28,7 @@ def build_deg_preview_table(
     mat = deg_input.feature_matrix.copy()
 
     if mat.empty:
-        raise ValueError("DEG preview input matrix is empty.")
+        return pd.DataFrame()
 
     a_cols = deg_input.group_a_samples
     b_cols = deg_input.group_b_samples
@@ -40,9 +42,7 @@ def build_deg_preview_table(
     mean_a = a.mean(axis=1, skipna=True)
     mean_b = b.mean(axis=1, skipna=True)
 
-    # Pseudocount for preview stability
-    # Note: If input was already log2(x+1), this calculation is slightly different from raw log-ratio
-    # But for a "preview", this is a common stable approximation.
+    # Stable pseudocount log-ratio
     log2_fc = np.log2(mean_b + 1.0) - np.log2(mean_a + 1.0)
 
     nonzero_a = (a.fillna(0) > 0).sum(axis=1)
@@ -60,6 +60,13 @@ def build_deg_preview_table(
         }
     )
 
+    # Add Direction
+    out["direction"] = out["log2_fc"].apply(lambda x: "Up" if x > 0 else "Down" if x < 0 else "-")
+
+    # Add Rank (based on abs_log2_fc)
+    out = out.sort_values("abs_log2_fc", ascending=False).reset_index(drop=True)
+    out.insert(0, "rank", out.index + 1)
+
     if sort_by not in out.columns:
         raise ValueError(f"sort_by not found: {sort_by}")
 
@@ -69,7 +76,7 @@ def build_deg_preview_table(
 
 def summarize_deg_preview(deg_preview_df: pd.DataFrame) -> dict:
     """
-    Small summary for UI cards.
+    Summary for UI cards.
     """
     if deg_preview_df.empty:
         return {
