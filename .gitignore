@@ -15,3 +15,5 @@ run_results/
 results/
 logs/
 *.log
+
+MEMO.txt
