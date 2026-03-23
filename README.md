@@ -1,7 +1,7 @@
 # iwa-rnaseq-reporter
-> **Note**
-> v0.1.0 is an initial reader / validator / preview release.
-> Downstream analytics and report generation are not included yet.
+> **Note**  
+> `v0.1.3` is an exploratory reader / validator / analysis-preview release.  
+> Statistical DEG testing and report export are not included yet.
 
 `iwa-rnaseq-reporter` は、`iwa-rnaseq-counter` が出力した RNA-Seq 定量結果セットを読み込み、  
 **dataset の整合確認・要約表示・QC/metadata preview** を行う Streamlit アプリです。
@@ -21,7 +21,7 @@
 
 ---
 
-## 2. 現在の対応範囲 (`v0.1.0`)
+## 2. 現在の対応範囲 (`v0.1.3`)
 
 ### 対応していること
 
@@ -36,17 +36,26 @@
 - validation message 表示
 - dataset overview 表示
 - sample metadata / QC summary preview 表示
+- analysis matrix 構築
+  - matrix kind 切替
+  - `exclude` 反映
+  - `log2(x+1)` 切替
+  - feature filtering (`min nonzero samples`, `min feature mean`)
+- PCA preview
+- sample correlation preview
+- gene / feature search
+- top variable features table
+- DEG comparison design scaffold
+- DEG preview table scaffold（統計検定なし）
 
 ### まだ対応していないこと
 
-- PCA
-- sample correlation
-- DEG 解析
+- 統計的 DEG 解析本体（p-value / adjusted p-value）
 - volcano plot
-- heatmap
+- DEG heatmap
 - GO / pathway enrichment
 - PDF / HTML report export
-- gene search / transcript search の本格UI
+- transcript-level 専用解析UIの本格実装
 
 ---
 
@@ -139,7 +148,8 @@ v0.1.0 は、現行の legacy manifest 形式を受け付けます。
 - sample_ids_aggregated と matrix sample がずれる
 - failed sample が matrix に含まれる
 
-## 6. 画面構成 (v0.1.0)
+## 6. 画面構成 (`v0.1.3`)
+
 - Input
 - Load Status
 - Dataset Overview
@@ -147,6 +157,13 @@ v0.1.0 は、現行の legacy manifest 形式を受け付けます。
 - Validation Messages
 - Sample Metadata
 - Sample QC Summary
+- Analysis Setup
+- PCA Preview
+- Sample Correlation
+- Gene Search
+- Top Variable Features
+- DEG Comparison Design
+- DEG Preview Table
 
 ## 7. 動作環境
 - Python 3.12 系を推奨
@@ -185,14 +202,24 @@ pytest -q
 1. Sample Metadata / Sample QC Summary を確認する
 
 ## 11. 現時点での位置づけ
-iwa-rnaseq-reporter v0.1.0 は、
-counter 出力を読むための最初の入口アプリです。
+`iwa-rnaseq-reporter v0.1.3` は、
+**iwa-rnaseq-counterの出力を読み込み、exploratory analysis と comparison design まで行える初期 reporter** です。
 
-この段階では、解析結果の高度な可視化や納品レポート生成ではなく、
+この段階で利用できるもの:
+
 - contract reader
 - dataset validator
 - preview UI
-として安定させることを優先しています。
+- exploratory analysis (PCA / sample correlation)
+- gene / feature search
+- DEG comparison design scaffold
+- DEG preview table scaffold
+
+この段階でまだ未対応のもの:
+
+- 統計的 DEG 解析本体
+- 多重検定補正付き結果表
+- volcano / enrichment / report export
 
 ## 12. 今後の予定
 
@@ -207,6 +234,44 @@ counter 出力を読むための最初の入口アプリです。
 - PDF / HTML report export
 
 ## 13. 開発メモ
+### DEG Comparison / Preview について
+
+`DEG Comparison Design` と `DEG Preview Table` は、現在は **comparison scaffold / preview** 機能です。
+
+- comparison-ready な metadata 列（例: `group`, `condition`）が存在する場合に比較設計を行えます
+- 現在の analysis matrix 設定をもとに comparison-ready matrix を構築します
+- `DEG Preview Table` は統計検定を含まず、主に以下を表示します
+  - group mean
+  - log2 fold change (preview)
+  - nonzero counts
+
+比較に使える metadata 列が存在しない場合、DEG preview は実行されません。
+
+## Analysis Setup について
+
+`Analysis Setup` では、後続の PCA / sample correlation / gene search / variable feature ranking / DEG preview に共通で使う analysis matrix を定義します。
+
+主な設定項目:
+
+- matrix kind
+  - `gene_tpm`
+  - `gene_numreads`
+  - `transcript_tpm` (available if present)
+  - `transcript_numreads` (available if present)
+- `Apply log2(x+1)`
+- `Respect exclude column`
+- `Min nonzero samples per feature`
+- `Min feature mean`
+
+PCA や correlation は、この current analysis matrix を前提に計算されます
+
+## PCA Preview / Sample Correlation について
+
+- `PCA Preview` は exploratory purpose の可視化です
+- sample 数が少ない場合、解釈には注意が必要です
+- `Sample Correlation` は current analysis matrix に基づく sample-to-sample correlation を表示します 
+
+### その他
 - iwa-rnaseq-counter の成果物 contract を前提に実装
 - legacy manifest 互換を優先
 - UI より先に loader / validator / normalizer / tests を固める方針

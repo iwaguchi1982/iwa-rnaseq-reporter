@@ -30,11 +30,15 @@ from src.feature_stats import (
     compute_feature_statistics,
     get_top_variable_features,
 )
-from src.comparisons import (
+from src.deg_input import (
     get_comparison_candidate_columns,
     summarize_groups,
-    build_comparison_sample_table,
-    validate_comparison_design,
+    build_deg_input,
+    validate_deg_input,
+)
+from src.deg_preview import (
+    build_deg_preview_table,
+    summarize_deg_preview,
 )
 import plotly.express as px
 
@@ -513,42 +517,147 @@ if "dataset" in st.session_state:
     # --------------------------------------------------
     st.header("13. DEG Comparison Design")
 
-    if ds.sample_metadata is not None:
-        comp_cands = get_comparison_candidate_columns(ds.sample_metadata)
-        if not comp_cands:
-            st.info("No suitable metadata columns found for group comparison.")
+    if analysis_matrix is not None:
+        comparison_sample_table = build_analysis_sample_table(
+            ds,
+            matrix_kind=matrix_kind,
+            use_exclude=use_exclude,
+        )
+
+        comparison_candidate_columns = get_comparison_candidate_columns(comparison_sample_table)
+
+        if not comparison_candidate_columns:
+            st.info("No comparison-ready metadata columns were found.")
+            deg_input_obj = None
         else:
-            comp_col = st.selectbox("Comparison Column", options=comp_cands)
-            
-            group_summary = summarize_groups(ds.sample_metadata, comp_col)
-            st.write("**Groups available:**")
-            st.dataframe(format_display_df(group_summary), use_container_width=True)
-            
-            group_names = sorted([str(g) for g in group_summary["group_name"].tolist()])
-            
-            c1, c2 = st.columns(2)
-            with c1:
-                group_a = st.selectbox("Group A (Case)", options=group_names, index=0)
-            with c2:
-                group_b = st.selectbox("Group B (Control)", options=group_names, index=1 if len(group_names) > 1 else 0)
-                
-            if group_a == group_b:
-                st.warning("Group A and Group B must be different.")
-            else:
-                comp_samples = build_comparison_sample_table(
-                    ds.sample_metadata, 
-                    comp_col, 
-                    group_a, 
-                    group_b, 
-                    use_exclude=use_exclude
+            d1, d2, d3 = st.columns(3)
+            with d1:
+                comparison_column = st.selectbox(
+                    "Comparison column",
+                    options=comparison_candidate_columns,
+                    index=0,
                 )
-                
-                st.write(f"**Selected Samples for Comparison:** `{len(comp_samples)}`")
-                st.dataframe(format_display_df(reorder_metadata_columns(comp_samples)), use_container_width=True)
-                
-                msgs = validate_comparison_design(comp_samples)
-                if msgs:
-                    for m in msgs:
-                        st.error(f"DESIGN ERROR: {m}")
-                else:
-                    st.success("Comparison design is ready for DEG analysis!")
+
+            group_summary = summarize_groups(comparison_sample_table, comparison_column)
+            valid_group_names = [
+                str(g) for g in group_summary["group_name"].fillna("").astype(str).tolist()
+                if str(g).strip() != ""
+            ]
+
+            if len(valid_group_names) < 2:
+                st.warning("Selected comparison column does not have at least 2 non-empty groups.")
+                deg_input_obj = None
+            else:
+                with d2:
+                    group_a = st.selectbox(
+                        "Group A",
+                        options=valid_group_names,
+                        index=0,
+                    )
+
+                remaining_groups = [g for g in valid_group_names if g != group_a]
+                with d3:
+                    group_b = st.selectbox(
+                        "Group B",
+                        options=remaining_groups,
+                        index=0 if remaining_groups else None,
+                    )
+
+                st.subheader("Group Summary")
+                st.dataframe(format_display_df(group_summary), use_container_width=True)
+
+                try:
+                    deg_input_obj = build_deg_input(
+                        ds,
+                        matrix_kind=matrix_kind,
+                        group_column=comparison_column,
+                        group_a=group_a,
+                        group_b=group_b,
+                        log2p1=log2p1,
+                        use_exclude=use_exclude,
+                        min_feature_nonzero_samples=int(min_feature_nonzero_samples),
+                        min_feature_mean=float(min_feature_mean),
+                    )
+
+                    issues = validate_deg_input(deg_input_obj, min_samples_per_group=2)
+
+                    st.write(
+                        f"**Comparison samples:** `{len(deg_input_obj.feature_matrix.columns)}` "
+                        f"(`{group_a}`: {len(deg_input_obj.group_a_samples)}, "
+                        f"`{group_b}`: {len(deg_input_obj.group_b_samples)})"
+                    )
+
+                    if issues:
+                        st.warning("Comparison design has validation issues:")
+                        for issue in issues:
+                            st.warning(issue)
+                    else:
+                        st.success("Comparison design looks ready for DEG preview.")
+
+                    with st.expander("Comparison Sample Table", expanded=False):
+                        st.dataframe(
+                            format_display_df(deg_input_obj.sample_table),
+                            use_container_width=True,
+                        )
+
+                except Exception as e:
+                    st.error(f"Failed to build comparison design: {e}")
+                    deg_input_obj = None
+    else:
+        deg_input_obj = None
+
+    # --------------------------------------------------
+    # 14. DEG Preview Table
+    # --------------------------------------------------
+    st.header("14. DEG Preview Table")
+
+    if deg_input_obj is not None:
+        try:
+            sort_options = ["abs_log2_fc", "log2_fc", "mean_group_a", "mean_group_b"]
+            p1, p2 = st.columns(2)
+            with p1:
+                preview_sort_by = st.selectbox(
+                    "Sort preview table by",
+                    options=sort_options,
+                    index=0,
+                )
+            with p2:
+                preview_top_n = st.number_input(
+                    "Rows to display",
+                    min_value=10,
+                    max_value=500,
+                    value=50,
+                    step=10,
+                )
+
+            deg_preview_df = build_deg_preview_table(
+                deg_input_obj,
+                sort_by=preview_sort_by,
+                ascending=False,
+            )
+
+            preview_summary = summarize_deg_preview(deg_preview_df)
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Features", preview_summary["n_features"])
+            c2.metric("Positive log2FC", preview_summary["n_positive_fc"])
+            c3.metric("Negative log2FC", preview_summary["n_negative_fc"])
+            c4.metric(
+                "Max |log2FC|",
+                f"{preview_summary['max_abs_log2_fc']:.3f}" if preview_summary["max_abs_log2_fc"] is not None else "NA",
+            )
+
+            st.caption(
+                "Preview table only. Statistical testing (p-value / adjusted p-value) is not implemented yet. "
+                "DEG Preview Table reflects the currently selected analysis matrix and transform settings."
+            )
+
+            st.dataframe(
+                format_display_df(deg_preview_df.head(int(preview_top_n))),
+                use_container_width=True,
+            )
+
+        except Exception as e:
+            st.error(f"Failed to build DEG preview table: {e}")
+    else:
+        st.info("Build a valid comparison design to preview DEG-like results.")
