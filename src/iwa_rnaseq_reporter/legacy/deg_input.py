@@ -18,6 +18,19 @@ class DEGInput:
     group_b_samples: list[str]
 
 
+@dataclass
+class DEGResult:
+    comparison_column: str
+    group_a: str
+    group_b: str
+    result_table: pd.DataFrame            # Full table with p_value, padj, etc.
+    n_features_tested: int
+    method: str                           # e.g., "welch_ttest"
+    padj_method: str                      # e.g., "fdr_bh"
+    matrix_kind: str
+    log2p1: bool
+
+
 def get_comparison_candidate_columns(sample_table: pd.DataFrame) -> list[str]:
     """
     Return metadata columns that are usable for comparison grouping.
