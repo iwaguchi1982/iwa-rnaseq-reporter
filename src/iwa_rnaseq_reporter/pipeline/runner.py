@@ -15,184 +15,33 @@ from ..models.resolved_comparison import ResolvedComparisonPlan, SampleMetadataR
 from ..legacy.deg_input import DEGInput
 from ..legacy.deg_stats import compute_statistical_deg
 
+from ..pipeline.comparison_resolver import resolve_comparison_plan
+
 logger = logging.getLogger(__name__)
-
-def parse_bool(val: Any) -> bool:
-    """Safely parse boolean from various types."""
-    if isinstance(val, bool):
-        return val
-    if isinstance(val, (int, float)):
-        return bool(val)
-    if isinstance(val, str):
-        s = val.lower().strip()
-        if s in ("true", "1", "yes", "on", "t", "y"):
-            return True
-        if s in ("false", "0", "no", "off", "f", "n"):
-            return False
-    return bool(val)
-
-def evaluate_criteria(metadata_rows: List[SampleMetadataRow], criteria: Dict[str, Any]) -> List[str]:
-    """
-    Evaluates criteria against list of SampleMetadataRow.
-    Returns a list of specimen_id that match.
-    """
-    matched_ids = []
-    for row in metadata_rows:
-        if not row.include_flag:
-            continue
-            
-        match = True
-        for col, values in criteria.items():
-            # Normalize single values to list
-            if not isinstance(values, list):
-                values = [values]
-            
-            attr_val = getattr(row, col, None)
-            if attr_val is None:
-                # Check in extra dict
-                attr_val = row.extra.get(col)
-                
-            if attr_val is None:
-                match = False
-                break
-            
-            if str(attr_val) not in [str(v) for v in values]:
-                match = False
-                break
-        
-        if match:
-            matched_ids.append(row.specimen_id)
-            
-    return matched_ids
 
 def resolve_comparison(matrix_spec: MatrixSpec, comparison_spec: ComparisonSpec, dry_run: bool = False) -> tuple[ResolvedComparisonPlan, pd.DataFrame]:
     """
     Step 1: Resolver - Resolves Specs into an executable Plan.
     Also returns the matrix DataFrame.
     """
-    # 1. Validate IDs
-    if comparison_spec.input_matrix_id != matrix_spec.matrix_id:
-        raise ValueError(
-            f"ID Mismatch: ComparisonSpec expects {comparison_spec.input_matrix_id}, "
-            f"but MatrixSpec is {matrix_spec.matrix_id}"
-        )
-
-    # 2. Sample Selector Enforcement
-    selector = comparison_spec.sample_selector
-    if selector.inclusion or selector.exclusion:
-        # User requested NotImplementedError for non-empty selector to be honest about contract support
-        raise NotImplementedError("ComparisonSpec.sample_selector (inclusion/exclusion) is not yet supported in v0.1.0.")
-
-    # 3. Load Matrix
+    # 1. Load Matrix (Manual handling for dry-run/mocking if needed)
     matrix_path = Path(matrix_spec.matrix_path)
     if not matrix_path.exists():
         if dry_run:
-            logger.warning(f"Dry-run: Matrix {matrix_path} not found. Using dummy data.")
+            logger.warning(f"Dry-run: Matrix {matrix_path} not found. Using dummy data for resolution check.")
             matrix_df = pd.DataFrame(index=["GENE1", "GENE2"], columns=["SPEC_0001", "SPEC_0002", "SPEC_0003", "SPEC_0004"], data=100)
         else:
             raise FileNotFoundError(f"Matrix file not found: {matrix_path}")
     else:
         matrix_df = pd.read_csv(matrix_path, sep="\t", index_col=0)
 
-    # 4. Load Metadata
-    metadata_path_str = matrix_spec.metadata.get("sample_metadata_path")
-    if not metadata_path_str:
-        raise ValueError("MatrixSpec.metadata.sample_metadata_path is missing.")
-    
-    metadata_path = Path(metadata_path_str)
-    if not metadata_path.exists():
-        if dry_run:
-            logger.warning(f"Dry-run: Metadata {metadata_path} not found. Using dummy metadata.")
-            metadata_df = pd.DataFrame({
-                "specimen_id": ["SPEC_0001", "SPEC_0002", "SPEC_0003", "SPEC_0004"],
-                "subject_id": ["SUBJ_0001", "SUBJ_0002", "SUBJ_0003", "SUBJ_0004"],
-                "group_labels": ["case", "case", "control", "control"],
-                "include_flag": [True, True, True, True]
-            })
-        else:
-            raise FileNotFoundError(f"Metadata file not found: {metadata_path}")
-    else:
-        metadata_df = pd.read_csv(metadata_path)
-
-    # Convert to SampleMetadataRow objects with safe parsing
-    metadata_rows = []
-    known_cols = {"specimen_id", "subject_id", "visit_id", "sample_name", "group_labels", "timepoint_label", "batch_label", "pairing_id", "include_flag", "note"}
-    for _, r in metadata_df.iterrows():
-        extra = {k: v for k, v in r.to_dict().items() if k not in known_cols}
-        metadata_rows.append(SampleMetadataRow(
-            specimen_id=str(r["specimen_id"]),
-            subject_id=str(r["subject_id"]),
-            visit_id=str(r.get("visit_id", "")) if not pd.isna(r.get("visit_id")) else None,
-            sample_name=str(r.get("sample_name", "")) if not pd.isna(r.get("sample_name")) else None,
-            group_labels=str(r.get("group_labels", "")) if not pd.isna(r.get("group_labels")) else None,
-            timepoint_label=str(r.get("timepoint_label", "")) if not pd.isna(r.get("timepoint_label")) else None,
-            batch_label=str(r.get("batch_label", "")) if not pd.isna(r.get("batch_label")) else None,
-            pairing_id=str(r.get("pairing_id", "")) if not pd.isna(r.get("pairing_id")) else None,
-            include_flag=parse_bool(r.get("include_flag", True)),
-            note=str(r.get("note", "")) if not pd.isna(r.get("note")) else None,
-            extra=extra
-        ))
-
-    # 5. Resolve Groups
-    if len(comparison_spec.groups) < 2:
-        raise ValueError("ComparisonSpec must have at least 2 groups.")
-        
-    group_a_spec = comparison_spec.groups[0]
-    group_b_spec = comparison_spec.groups[1]
-    
-    group_a_ids = evaluate_criteria(metadata_rows, group_a_spec.criteria)
-    group_b_ids = evaluate_criteria(metadata_rows, group_b_spec.criteria)
-    
-    # 6. Mismatch Logging
-    all_metadata_ids = {r.specimen_id for r in metadata_rows if r.include_flag}
-    all_matrix_ids = set(matrix_df.columns)
-    
-    missing_in_matrix = (set(group_a_ids) | set(group_b_ids)) - all_matrix_ids
-    if missing_in_matrix:
-        logger.warning(f"Specimens matched criteria but missing in matrix: {missing_in_matrix}")
-        
-    missing_in_metadata = all_matrix_ids - all_metadata_ids
-    if missing_in_metadata:
-        logger.warning(f"Specimens in matrix but missing/excluded in metadata: {missing_in_metadata}")
-
-    # Map specimen IDs to subject IDs and filter by matrix columns
-    group_a_valid = [s for s in group_a_ids if s in matrix_df.columns]
-    group_b_valid = [s for s in group_b_ids if s in matrix_df.columns]
-    
-    # 7. Empty Group Validation
-    if not group_a_valid:
-        raise ValueError(f"Resolved group A '{group_a_spec.label}' is empty.")
-    if not group_b_valid:
-        raise ValueError(f"Resolved group B '{group_b_spec.label}' is empty.")
-
-    subj_a = [r.subject_id for r in metadata_rows if r.specimen_id in group_a_valid]
-    subj_b = [r.subject_id for r in metadata_rows if r.specimen_id in group_b_valid]
-
-    # 8. Build Final Plan
-    plan = ResolvedComparisonPlan(
-        comparison_id=comparison_spec.comparison_id,
-        input_matrix_id=matrix_spec.matrix_id,
-        comparison_type=comparison_spec.comparison_type,
-        analysis_intent=comparison_spec.analysis_intent or "differential_expression",
-        group_a_label=group_a_spec.label,
-        group_a_specimen_ids=group_a_valid,
-        group_b_label=group_b_spec.label,
-        group_b_specimen_ids=group_b_valid,
-        paired=comparison_spec.paired,
-        covariates=comparison_spec.covariates,
-        group_a_subject_ids=subj_a,
-        group_b_subject_ids=subj_b,
-        group_a_matrix_columns=group_a_valid,
-        group_b_matrix_columns=group_b_valid,
-        sample_axis=matrix_spec.sample_axis,
-        feature_type=matrix_spec.feature_type,
-        normalization=matrix_spec.normalization,
-        matrix_path=str(matrix_path),
-        feature_annotation_path=matrix_spec.feature_annotation_path,
-        sample_metadata_path=str(metadata_path),
-        included_specimen_ids=group_a_valid + group_b_valid,
-        excluded_specimen_ids=[r.specimen_id for r in metadata_rows if r.specimen_id not in (group_a_valid + group_b_valid)],
-        metadata=comparison_spec.metadata
+    # 2. Delegate Resolution to comparison_resolver
+    # Note: If dry_run is True and files are missing, the resolver will fail on metadata loading.
+    # In v0.1, we expect dry-run users to at least have the metadata file or we fail fast.
+    plan = resolve_comparison_plan(
+        matrix_spec=matrix_spec,
+        comparison_spec=comparison_spec,
+        matrix_df=matrix_df
     )
     
     return plan, matrix_df

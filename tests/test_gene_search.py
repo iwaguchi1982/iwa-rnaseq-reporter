@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 import pytest
-from src.gene_search import search_features, build_feature_profile_table
+from iwa_rnaseq_reporter.legacy.gene_search import search_features, build_feature_profile_table
 
 
 def test_search_features_basic():
@@ -15,7 +15,7 @@ def test_search_features_basic():
 
 
 def test_build_feature_profile_table(minimal_dataset_files):
-    from src.loader import load_reporter_dataset
+    from iwa_rnaseq_reporter.legacy.loader import load_reporter_dataset
     
     ds = load_reporter_dataset(minimal_dataset_files["manifest_path"])
     
@@ -31,7 +31,7 @@ def test_build_feature_profile_table(minimal_dataset_files):
 
 
 def test_build_feature_profile_table_raises_on_missing(minimal_dataset_files):
-    from src.loader import load_reporter_dataset
+    from iwa_rnaseq_reporter.legacy.loader import load_reporter_dataset
     ds = load_reporter_dataset(minimal_dataset_files["manifest_path"])
     
     with pytest.raises(ValueError, match="not found"):

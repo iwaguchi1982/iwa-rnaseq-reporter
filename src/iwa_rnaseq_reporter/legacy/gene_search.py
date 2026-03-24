@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pandas as pd
-from src.analysis import build_analysis_matrix
+from .analysis import build_analysis_matrix
 
 
 def search_features(index: pd.Index, query: str, max_hits: int = 50) -> list[str]:

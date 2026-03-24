@@ -22,5 +22,5 @@ scipy = ">=1.12.0,<2"
 statsmodels = ">=0.14.0,<1"
 
 [tasks]
-app = "streamlit run iwa_rnaseq_reporter.py"
-test = "pytest"
+app = "PYTHONPATH=src python -m streamlit run app.py"
+test = "python -m pytest"

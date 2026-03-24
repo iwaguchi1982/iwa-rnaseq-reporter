@@ -3,7 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from src.loader import ReporterLoadError, load_reporter_dataset
+from iwa_rnaseq_reporter.legacy.loader import ReporterLoadError, load_reporter_dataset
 
 
 def _codes(messages) -> list[str]:

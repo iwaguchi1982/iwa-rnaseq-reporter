@@ -3,7 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from src.analysis import (
+from iwa_rnaseq_reporter.legacy.analysis import (
     filter_features,
     build_analysis_matrix,
     get_analysis_sample_ids,
@@ -13,7 +13,7 @@ from src.analysis import (
 
 
 def test_get_matrix_by_kind_gene_tpm(minimal_dataset_files):
-    from src.loader import load_reporter_dataset
+    from iwa_rnaseq_reporter.legacy.loader import load_reporter_dataset
 
     ds = load_reporter_dataset(minimal_dataset_files["manifest_path"])
     mat = get_matrix_by_kind(ds, "gene_tpm")
@@ -23,7 +23,7 @@ def test_get_matrix_by_kind_gene_tpm(minimal_dataset_files):
 
 
 def test_get_analysis_sample_ids_uses_selected_matrix_kind(minimal_dataset_files):
-    from src.loader import load_reporter_dataset
+    from iwa_rnaseq_reporter.legacy.loader import load_reporter_dataset
 
     ds = load_reporter_dataset(minimal_dataset_files["manifest_path"])
 
@@ -79,7 +79,7 @@ def test_filter_features_by_min_feature_mean():
 
 
 def test_build_analysis_matrix_applies_min_feature_mean(minimal_dataset_files):
-    from src.loader import load_reporter_dataset
+    from iwa_rnaseq_reporter.legacy.loader import load_reporter_dataset
 
     path = minimal_dataset_files["gene_tpm_path"]
     df = pd.read_csv(path)
@@ -102,7 +102,7 @@ def test_build_analysis_matrix_applies_min_feature_mean(minimal_dataset_files):
 
 
 def test_build_analysis_matrix_raises_when_all_features_filtered(minimal_dataset_files):
-    from src.loader import load_reporter_dataset
+    from iwa_rnaseq_reporter.legacy.loader import load_reporter_dataset
 
     ds = load_reporter_dataset(minimal_dataset_files["manifest_path"])
 
@@ -118,7 +118,7 @@ def test_build_analysis_matrix_raises_when_all_features_filtered(minimal_dataset
 
 
 def test_build_analysis_sample_table_marks_excluded_sample(minimal_dataset_files):
-    from src.loader import load_reporter_dataset
+    from iwa_rnaseq_reporter.legacy.loader import load_reporter_dataset
 
     path = minimal_dataset_files["sample_metadata_path"]
     df = pd.read_csv(path)

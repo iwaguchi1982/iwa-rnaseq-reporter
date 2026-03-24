@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.pca_utils import (
+from iwa_rnaseq_reporter.legacy.pca_utils import (
     build_pca_plot_df,
     run_pca,
     select_top_variable_features,
@@ -102,7 +102,7 @@ def test_run_pca_rejects_nan():
 
 
 def test_build_pca_plot_df_merges_metadata(minimal_dataset_files):
-    from src.loader import load_reporter_dataset
+    from iwa_rnaseq_reporter.legacy.loader import load_reporter_dataset
 
     ds = load_reporter_dataset(minimal_dataset_files["manifest_path"])
 
@@ -123,7 +123,7 @@ def test_build_pca_plot_df_merges_metadata(minimal_dataset_files):
 
 
 def test_build_pca_plot_df_respects_exclude(minimal_dataset_files):
-    from src.loader import load_reporter_dataset
+    from iwa_rnaseq_reporter.legacy.loader import load_reporter_dataset
 
     path = minimal_dataset_files["sample_metadata_path"]
     df = pd.read_csv(path)

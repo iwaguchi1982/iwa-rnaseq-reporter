@@ -3,7 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from src.correlation_utils import (
+from iwa_rnaseq_reporter.legacy.correlation_utils import (
     build_sample_annotation_table,
     compute_sample_correlation,
 )
@@ -41,7 +41,7 @@ def test_compute_sample_correlation_requires_two_samples():
 
 
 def test_build_sample_annotation_table(minimal_dataset_files):
-    from src.loader import load_reporter_dataset
+    from iwa_rnaseq_reporter.legacy.loader import load_reporter_dataset
 
     ds = load_reporter_dataset(minimal_dataset_files["manifest_path"])
     ann = build_sample_annotation_table(ds, ["SRR518891", "SRR518892"])

@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.deg_input import DEGInput
-from src.deg_stats import compute_statistical_deg
+from iwa_rnaseq_reporter.legacy.deg_input import DEGInput
+from iwa_rnaseq_reporter.legacy.deg_stats import compute_statistical_deg
 
 
 def test_compute_statistical_deg_basic():

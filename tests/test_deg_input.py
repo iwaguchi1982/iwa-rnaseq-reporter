@@ -3,7 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from src.deg_input import (
+from iwa_rnaseq_reporter.legacy.deg_input import (
     get_comparison_candidate_columns,
     summarize_groups,
     build_deg_input,
@@ -14,8 +14,8 @@ from src.deg_input import (
 
 
 def test_get_comparison_candidate_columns_filters_all_unique(minimal_dataset_files):
-    from src.loader import load_reporter_dataset
-    from src.analysis import build_analysis_sample_table
+    from iwa_rnaseq_reporter.legacy.loader import load_reporter_dataset
+    from iwa_rnaseq_reporter.legacy.analysis import build_analysis_sample_table
 
     path = minimal_dataset_files["sample_metadata_path"]
     df = pd.read_csv(path)
@@ -32,7 +32,7 @@ def test_get_comparison_candidate_columns_filters_all_unique(minimal_dataset_fil
 
 
 def test_build_deg_input_aligns_feature_matrix_rows_and_cols(minimal_dataset_files):
-    from src.loader import load_reporter_dataset
+    from iwa_rnaseq_reporter.legacy.loader import load_reporter_dataset
 
     path = minimal_dataset_files["sample_metadata_path"]
     df = pd.read_csv(path)
@@ -50,7 +50,7 @@ def test_build_deg_input_aligns_feature_matrix_rows_and_cols(minimal_dataset_fil
 
 
 def test_build_deg_input_respects_exclude(minimal_dataset_files):
-    from src.loader import load_reporter_dataset
+    from iwa_rnaseq_reporter.legacy.loader import load_reporter_dataset
     path = minimal_dataset_files["sample_metadata_path"]
     df = pd.read_csv(path)
     df["group"] = ["A", "B"]
@@ -64,14 +64,14 @@ def test_build_deg_input_respects_exclude(minimal_dataset_files):
 
 
 def test_build_deg_input_raises_for_same_group(minimal_dataset_files):
-    from src.loader import load_reporter_dataset
+    from iwa_rnaseq_reporter.legacy.loader import load_reporter_dataset
     ds = load_reporter_dataset(minimal_dataset_files["manifest_path"])
     with pytest.raises(ValueError, match="must be different"):
         build_deg_input(ds, "gene_tpm", "group", "A", "A")
 
 
 def test_ui_helpers(minimal_dataset_files):
-    from src.loader import load_reporter_dataset
+    from iwa_rnaseq_reporter.legacy.loader import load_reporter_dataset
     path = minimal_dataset_files["sample_metadata_path"]
     df = pd.read_csv(path)
     df["group"] = ["A", "B"]

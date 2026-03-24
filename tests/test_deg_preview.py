@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import pandas as pd
-from src.deg_preview import build_deg_preview_table
+from iwa_rnaseq_reporter.legacy.deg_preview import build_deg_preview_table
 
 
 def test_compute_deg_preview_uses_only_deg_input(minimal_dataset_files):
-    from src.loader import load_reporter_dataset
-    from src.deg_input import build_deg_input
+    from iwa_rnaseq_reporter.legacy.loader import load_reporter_dataset
+    from iwa_rnaseq_reporter.legacy.deg_input import build_deg_input
 
     path = minimal_dataset_files["sample_metadata_path"]
     df = pd.read_csv(path)
@@ -24,12 +24,12 @@ def test_compute_deg_preview_uses_only_deg_input(minimal_dataset_files):
 
 
 def test_deg_preview_direction_and_rank(minimal_dataset_files):
-    from src.loader import load_reporter_dataset
-    from src.deg_input import build_deg_input
+    from iwa_rnaseq_reporter.legacy.loader import load_reporter_dataset
+    from iwa_rnaseq_reporter.legacy.deg_input import build_deg_input
     
     ds = load_reporter_dataset(minimal_dataset_files["manifest_path"])
     # mock a deg_input with known values
-    from src.deg_input import DEGInput
+    from iwa_rnaseq_reporter.legacy.deg_input import DEGInput
     import numpy as np
     
     # Feature 1: mean B=10, A=1 -> Up

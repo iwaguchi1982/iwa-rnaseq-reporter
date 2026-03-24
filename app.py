@@ -1,36 +1,40 @@
 import streamlit as st
 import pandas as pd
+import sys
 from pathlib import Path
 
-from src.loader import load_reporter_dataset, ReporterLoadError
-from src.analysis import (
+# Add src to sys.path to allow importing from iwa_rnaseq_reporter package
+sys.path.append(str(Path(__file__).parent / "src"))
+
+from iwa_rnaseq_reporter.legacy.loader import load_reporter_dataset, ReporterLoadError
+from iwa_rnaseq_reporter.legacy.analysis import (
     get_matrix_by_kind,
     get_analysis_sample_ids,
     build_analysis_matrix,
     build_analysis_sample_table,
 )
-from src.pca_utils import (
+from iwa_rnaseq_reporter.legacy.pca_utils import (
     select_top_variable_features,
     run_pca,
     build_pca_plot_df,
 )
-from src.correlation_utils import (
+from iwa_rnaseq_reporter.legacy.correlation_utils import (
     compute_sample_correlation,
     build_sample_annotation_table,
 )
-from src.ui_utils import (
+from iwa_rnaseq_reporter.legacy.ui_utils import (
     format_display_df,
     get_nonempty_metadata_columns,
 )
-from src.gene_search import (
+from iwa_rnaseq_reporter.legacy.gene_search import (
     search_features,
     build_feature_profile_table,
 )
-from src.feature_stats import (
+from iwa_rnaseq_reporter.legacy.feature_stats import (
     compute_feature_statistics,
     get_top_variable_features,
 )
-from src.deg_input import (
+from iwa_rnaseq_reporter.legacy.deg_input import (
     get_comparison_candidate_columns,
     summarize_groups,
     build_deg_input,
@@ -38,7 +42,7 @@ from src.deg_input import (
     build_group_summary,
     build_comparison_sample_table,
 )
-from src.deg_preview import (
+from iwa_rnaseq_reporter.legacy.deg_preview import (
     build_deg_preview_table,
     summarize_deg_preview,
 )

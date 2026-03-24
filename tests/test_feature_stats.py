@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 import pytest
-from src.feature_stats import compute_feature_statistics, get_top_variable_features
+from iwa_rnaseq_reporter.legacy.feature_stats import compute_feature_statistics, get_top_variable_features
 
 
 def test_compute_feature_statistics_basic():
