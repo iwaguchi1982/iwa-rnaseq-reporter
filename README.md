@@ -90,8 +90,173 @@ run_results/<run_name>/
 ├── run_config.json                 # optional
 └── logs/
     └── run.log                     # optional
+```
+
+## I/O Contract (v0.1.x)
+
+`iwa-rnaseq-reporter` は、`iwa-rnaseq-counter` が出力した dataset を読み込み、  
+validation / preview / exploratory analysis / comparison design を行う  
+**RNA-Seq 解析・可視化モジュール** です。
+
+現行バージョンでは、`iwa-rnaseq-counter` の **legacy dataset contract** を主入力としています。  
+一方で、将来的には orchestra 共通 Spec に基づく入出力契約へ段階的に移行します。
+
+---
+
+### 現行の入力 contract
+
+v0.1.x では、以下のいずれかを入口として dataset を読み込みます。
+
+- run directory
+- results directory
+- `dataset_manifest.json`
+
+reporter は、manifest を起点に関連ファイルを解決し、  
+dataset 単位で validation を行います。
+
+#### 現行で主に利用する入力ファイル
+- `results/dataset_manifest.json`
+- `results/sample_metadata.csv`
+- `results/sample_qc_summary.csv`
+- `results/gene_tpm.csv`
+- `results/gene_numreads.csv`
+- `results/transcript_tpm.csv` (optional)
+- `results/transcript_numreads.csv` (optional)
+- `results/run_summary.json` (optional)
+- `sample_sheet.csv` (optional)
+- `run_config.json` (optional)
+- `logs/run.log` (optional)
+
+---
+
+### 現行の出力
+
+v0.1.x では、reporter は主に UI 上で preview を提供します。  
+この段階では、正式な report export や統計的 DEG 結果ファイルの固定出力はまだ含みません。
+
+ただし、内部的には以下の出力単位を将来の正式 contract として意識しています。
+
+- analysis matrix
+- DEG comparison design
+- DEG preview table
+- exploratory analysis result
+- report section 構成情報
+
+---
+
+### 将来対応予定の共通 Spec
+
+`iwa-rnaseq-reporter` は、将来的に以下の Spec を中心に I/O を整理する予定です。
+
+#### 入力
+- `MatrixSpec`
+- `ComparisonSpec`
+
+#### 出力
+- `ResultSpec`
+- `ReportPayloadSpec`
+- `ExecutionRunSpec`
+
+必要に応じて、以下とも連携します。
+
+- `SignatureSpec`
+- `ReferenceDatasetSpec`
+
+---
+
+### 将来の最小 Spec 接続イメージ
+
+#### 入力
+- `MatrixSpec`
+  - 読み込む matrix の種類
+  - feature type
+  - normalization 状態
+  - 実体ファイル位置
+- `ComparisonSpec`
+  - 比較対象群
+  - paired の有無
+  - covariates
+  - analysis intent
+
+#### 出力
+- `ResultSpec`
+  - differential expression
+  - feature-level statistics
+  - signature score result
+  - pathway result
+- `ReportPayloadSpec`
+  - 表示 / export 用 section 構成
+  - source result 参照
+- `ExecutionRunSpec`
+  - 実行履歴
+  - app version
+  - profile
+  - status
+
+---
+
+### v0.1.x における実務上の位置づけ
+
+現在の `iwa-rnaseq-reporter v0.1.x` は、  
+**legacy contract reader / validator / preview app** として位置づけています。
+
+この段階で重視しているのは以下です。
+
+- counter 出力を安全に読む
+- dataset の整合性を確認する
+- comparison-ready な分析土台を作る
+- 後続の DEG / report export / comparator / signature scorer に接続できる形を保つ
+
+言い換えると、現段階では  
+**report 本体の完成よりも、入力 contract の安定化を優先** しています。
+
+---
+
+### Comparison に関する方針
+
+比較設計は、将来的に `ComparisonSpec` によって表現する方針です。
+
+このため、以下のような domain 固有の比較名を I/O 契約の必須前提にはしません。
+
+- tumor vs normal
+- responder vs non-responder
+- relapse vs baseline
+
+v0.1.x では UI 上の比較設計 scaffold を提供していますが、  
+設計思想としてはあくまで **group-based comparison の一般化** を目指します。
+
+---
+
+### domain 固有語彙を避ける方針
+
+`iwa-rnaseq-reporter` は、Oncology を初期主戦場にしつつも、  
+I/O 契約そのものは disease-agnostic に保つ方針です。
+
+そのため、以下のような情報を共通 contract の必須項目にはしません。
+
+- tumor status
+- stage
+- survival endpoint
+- RECIST response
+- immune hot/cold
+
+必要な場合は、metadata や将来の overlay / preset で表現します。
+
+---
+
+### 今後の移行方針
+
+v0.1.x では legacy dataset contract を継続サポートします。  
+ただし今後は、以下の順に共通 Spec へ寄せていく予定です。
+
+1. `dataset_manifest.json` の schema 明示化
+2. `gene_tpm.csv` / `gene_numreads.csv` などを `MatrixSpec` と対応づける
+3. comparison design を `ComparisonSpec` として保存可能にする
+4. DEG / preview / report section を `ResultSpec` / `ReportPayloadSpec` に寄せる
+5. 実行履歴を `ExecutionRunSpec` に統一する
 
 ## 4. dataset_manifest.json について
+
 v0.1.0 は、現行の legacy manifest 形式を受け付けます。  
 例:  
 ```json
@@ -125,6 +290,8 @@ v0.1.0 は、現行の legacy manifest 形式を受け付けます。
 }
 ```
 将来的には schema_name, schema_version, dataset_id, paths を持つ新schemaへの移行を想定していますが、v0.1.0 は legacy 互換ローダーを優先しています。
+
+
 
 ## 5. バリデーション方針
 ### fatal

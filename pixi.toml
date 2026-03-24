@@ -18,6 +18,8 @@ biopython = ">=1.84,<2"
 psutil = ">=7.0.0,<8"
 pyyaml = ">=6.0.2,<7"
 pytest = ">=8.0.0,<9"
+scipy = ">=1.12.0,<2"
+statsmodels = ">=0.14.0,<1"
 
 [tasks]
 app = "streamlit run iwa_rnaseq_reporter.py"

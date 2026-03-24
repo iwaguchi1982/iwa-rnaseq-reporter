@@ -171,6 +171,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/orc-2.3.0-h21090e2_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/packaging-26.0-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pandas-2.3.3-py312hf79963d_1.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/patsy-1.0.2-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pcre2-10.47-haa7fec5_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pillow-12.1.1-py312h50c33e8_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pixman-0.46.4-h54a6638_1.conda
@@ -208,6 +209,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/six-1.17.0-pyhe01879c_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/smmap-5.0.2-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/snappy-1.2.2-h03e3b7b_1.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/statsmodels-0.14.6-py312h4f23490_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/streamlit-1.55.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/tenacity-9.1.4-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/threadpoolctl-3.6.0-pyhecae5ae_0.conda
@@ -2308,6 +2310,16 @@ packages:
   license_family: BSD
   size: 15099922
   timestamp: 1759266031115
+- conda: https://conda.anaconda.org/conda-forge/noarch/patsy-1.0.2-pyhcf101f3_0.conda
+  sha256: 9678f4745e6b82b36fab9657a19665081862268cb079cf9acf878ab2c4fadee9
+  md5: 8678577a52161cc4e1c93fcc18e8a646
+  depends:
+  - numpy >=1.4.0
+  - python >=3.10
+  - python
+  license: BSD-2-Clause AND PSF-2.0
+  size: 193450
+  timestamp: 1760998269054
 - conda: https://conda.anaconda.org/conda-forge/linux-64/pcre2-10.47-haa7fec5_0.conda
   sha256: 5e6f7d161356fefd981948bea5139c5aa0436767751a6930cb1ca801ebb113ff
   md5: 7a3bff861a6583f1889021facefc08b1
@@ -2866,6 +2878,24 @@ packages:
   license_family: BSD
   size: 45829
   timestamp: 1762948049098
+- conda: https://conda.anaconda.org/conda-forge/linux-64/statsmodels-0.14.6-py312h4f23490_0.conda
+  sha256: 0c61eccf3f71b9812da8ced747b1f22bafd6f66f9a64abe06bbe147a03b7322e
+  md5: 423b8676bd6eed60e97097b33f13ea3f
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - libgcc >=14
+  - numpy <3,>=1.22.3
+  - numpy >=1.23,<3
+  - packaging >=21.3
+  - pandas !=2.1.0,>=1.4
+  - patsy >=0.5.6
+  - python >=3.12,<3.13.0a0
+  - python_abi 3.12.* *_cp312
+  - scipy !=1.9.2,>=1.8
+  license: BSD-3-Clause
+  license_family: BSD
+  size: 11903737
+  timestamp: 1764983555676
 - conda: https://conda.anaconda.org/conda-forge/noarch/streamlit-1.55.0-pyhd8ed1ab_0.conda
   sha256: 35e75a6ab4e6f12f1160f704aadf384c0b0360b31f311eff25854b54515cc82a
   md5: 544faae55b22353222e22efc1048b78f
