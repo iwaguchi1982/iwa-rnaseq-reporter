@@ -19,48 +19,36 @@ from ..pipeline.comparison_resolver import resolve_comparison_plan
 
 logger = logging.getLogger(__name__)
 
-def resolve_comparison(matrix_spec: MatrixSpec, comparison_spec: ComparisonSpec, dry_run: bool = False) -> tuple[ResolvedComparisonPlan, pd.DataFrame]:
+def load_matrix_dataframe(matrix_spec: MatrixSpec, dry_run: bool = False) -> pd.DataFrame:
     """
-    Step 1: Resolver - Resolves Specs into an executable Plan.
-    Also returns the matrix DataFrame.
+    Step 1: Load - Reads the matrix file or generates dummy data for dry-run.
     """
-    # 1. Load Matrix (Manual handling for dry-run/mocking if needed)
     matrix_path = Path(matrix_spec.matrix_path)
     if not matrix_path.exists():
         if dry_run:
-            logger.warning(f"Dry-run: Matrix {matrix_path} not found. Using dummy data for resolution check.")
-            matrix_df = pd.DataFrame(index=["GENE1", "GENE2"], columns=["SPEC_0001", "SPEC_0002", "SPEC_0003", "SPEC_0004"], data=100)
+            logger.warning(f"Dry-run: Matrix {matrix_path} not found. Using dummy data.")
+            return pd.DataFrame(index=["GENE1", "GENE2"], columns=["SPEC_0001", "SPEC_0002", "SPEC_0003", "SPEC_0004"], data=100)
         else:
             raise FileNotFoundError(f"Matrix file not found: {matrix_path}")
-    else:
-        matrix_df = pd.read_csv(matrix_path, sep="\t", index_col=0)
-
-    # 2. Delegate Resolution to comparison_resolver
-    # Note: If dry_run is True and files are missing, the resolver will fail on metadata loading.
-    # In v0.1, we expect dry-run users to at least have the metadata file or we fail fast.
-    plan = resolve_comparison_plan(
-        matrix_spec=matrix_spec,
-        comparison_spec=comparison_spec,
-        matrix_df=matrix_df
-    )
     
-    return plan, matrix_df
+    return pd.read_csv(matrix_path, sep="\t", index_col=0)
 
 def run_analysis_engine(plan: ResolvedComparisonPlan, matrix_df: pd.DataFrame, tables_dir: Path) -> ResultSpec:
     """
-    Step 2: Engine - Consumes the Plan and produces results.
+    Step 3: Execute - Consumes the Resolved Plan and produces Results.
+    TODO: In future, this could simply be run_analysis_engine(plan, matrix_df, ...)
     """
-    logger.info(f"Executing Analysis: {plan.group_a_label} vs {plan.group_b_label}")
+    logger.info(f"Executing Analysis: {plan.group_a_label} ({len(plan.group_a_matrix_columns)} samples) vs {plan.group_b_label} ({len(plan.group_b_matrix_columns)} samples)")
     
-    # Prepare DEGInput
+    # Prepare DEGInput (Legacy bridge)
     deg_input = DEGInput(
         matrix_kind="count_matrix", 
         feature_matrix=matrix_df,
         group_column="comparison",
         group_a=plan.group_a_label,
         group_b=plan.group_b_label,
-        group_a_samples=plan.group_a_specimen_ids,
-        group_b_samples=plan.group_b_specimen_ids
+        group_a_samples=plan.group_a_matrix_columns,
+        group_b_samples=plan.group_b_matrix_columns
     )
     
     deg_result = compute_statistical_deg(deg_input, method="welch_ttest", padj_method="fdr_bh")
@@ -71,9 +59,8 @@ def run_analysis_engine(plan: ResolvedComparisonPlan, matrix_df: pd.DataFrame, t
     # Convert to ResultSpec
     result_rows = []
     for _, row in deg_result.result_table.iterrows():
-        # Try to infer label if feature_id is actually a symbol or if there's a symbol col
         feat_id = str(row.get("feature_id", ""))
-        feat_label = str(row.get("feature_label", feat_id)) # Falls back to ID
+        feat_label = str(row.get("feature_label", feat_id))
         
         result_rows.append(ResultRow(
             feature_id=feat_id,
@@ -105,6 +92,9 @@ def run_analysis_engine(plan: ResolvedComparisonPlan, matrix_df: pd.DataFrame, t
     )
 
 def build_report_payload(plan: ResolvedComparisonPlan, result_spec: ResultSpec, dirs: Dict[str, Path]) -> ReportPayloadSpec:
+    """
+    Step 4: Emit (Report) - Build display payload.
+    """
     deg_out_path = dirs["tables"] / "deg_results.tsv"
     return ReportPayloadSpec(
         schema_name="ReportPayloadSpec",
@@ -113,10 +103,19 @@ def build_report_payload(plan: ResolvedComparisonPlan, result_spec: ResultSpec, 
         project_id="UNKNOWN",
         title=f"RNA-Seq DEG Report: {plan.group_a_label} vs {plan.group_b_label}",
         sections=[ReportSection("deg_table", "table", source_refs=[result_spec.result_id])],
-        artifacts=[ReportArtifact("table", str(deg_out_path.resolve()))]
+        artifacts=[ReportArtifact("table", str(deg_out_path.resolve()))],
+        metadata={
+            "group_a_label": plan.group_a_label,
+            "group_b_label": plan.group_b_label,
+            "group_a_size": len(plan.group_a_matrix_columns),
+            "group_b_size": len(plan.group_b_matrix_columns),
+        }
     )
 
 def build_execution_run(plan: ResolvedComparisonPlan, result_spec: ResultSpec, payload_spec: ReportPayloadSpec, dirs: Dict[str, Path], started_at: str, dry_run: bool) -> ExecutionRunSpec:
+    """
+    Step 4: Emit (Provenance) - Record execution run.
+    """
     finished_at = datetime.now(timezone.utc).astimezone().isoformat()
     return ExecutionRunSpec(
         schema_name="ExecutionRunSpec",
@@ -130,11 +129,14 @@ def build_execution_run(plan: ResolvedComparisonPlan, result_spec: ResultSpec, p
         parameters={"dry_run": dry_run, "method": "welch_ttest"},
         execution_backend="local",
         finished_at=finished_at,
-        status="completed", # Changed from "success" for consistency
+        status="completed",
         log_path=str((dirs["logs"] / "reporter.log").resolve())
     )
 
 def run_reporter_pipeline(matrix_spec: MatrixSpec, comparison_spec: ComparisonSpec, outdir: Path, dry_run: bool = False) -> tuple[ResultSpec, ReportPayloadSpec, ExecutionRunSpec]:
+    """
+    Main Orchestration Flow: load -> resolve -> execute -> emit
+    """
     started_at = datetime.now(timezone.utc).astimezone().isoformat()
     
     # Prepare Output Directories
@@ -142,16 +144,21 @@ def run_reporter_pipeline(matrix_spec: MatrixSpec, comparison_spec: ComparisonSp
     dirs = {k: outdir / k for k in ["tables", "plots", "specs", "logs"]}
     for d in dirs.values(): d.mkdir(exist_ok=True)
 
-    # 1. Resolve Comparison (Resolver)
-    plan, matrix_df = resolve_comparison(matrix_spec, comparison_spec, dry_run=dry_run)
+    # 1. Load Data
+    matrix_df = load_matrix_dataframe(matrix_spec, dry_run=dry_run)
     
-    # 2. Run Analysis (Engine)
-    result_spec = run_analysis_engine(plan, matrix_df, dirs["tables"])
+    # 2. Resolve Comparison (Strategy: delegate to comparison_resolver)
+    resolved_plan = resolve_comparison_plan(
+        matrix_spec=matrix_spec,
+        comparison_spec=comparison_spec,
+        matrix_df=matrix_df
+    )
+    
+    # 3. Execute Analysis (Engine)
+    result_spec = run_analysis_engine(resolved_plan, matrix_df, dirs["tables"])
 
-    # 3. Build Report Payload
-    payload_spec = build_report_payload(plan, result_spec, dirs)
-    
-    # 4. Execution Run Records
-    run_spec = build_execution_run(plan, result_spec, payload_spec, dirs, started_at, dry_run)
+    # 4. Emit Results (Report & Execution Records)
+    payload_spec = build_report_payload(resolved_plan, result_spec, dirs)
+    run_spec = build_execution_run(resolved_plan, result_spec, payload_spec, dirs, started_at, dry_run)
     
     return result_spec, payload_spec, run_spec
