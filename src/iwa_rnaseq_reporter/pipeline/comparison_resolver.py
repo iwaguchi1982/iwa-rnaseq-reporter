@@ -118,14 +118,20 @@ def _resolve_group(
 ) -> ResolvedGroup:
     group_df = df.loc[evaluate_criteria(df, criteria)].copy()
 
+    if group_df.empty:
+        raise ValueError(
+            f"Resolved group '{label}' matched 0 samples in the metadata under criteria: {criteria}. "
+            f"Please check your metadata CSV and criteria definition."
+        )
+
     specimen_ids = group_df["specimen_id"].tolist()
     subject_ids = group_df["subject_id"].tolist()
 
     missing_in_matrix = [sid for sid in specimen_ids if sid not in matrix_columns]
     if missing_in_matrix:
         raise ValueError(
-            f"Resolved group '{label}' contains specimen_ids not found in matrix columns: "
-            f"{missing_in_matrix}"
+            f"Resolved group '{label}' matched metadata samples that are not found in the matrix columns: "
+            f"{missing_in_matrix}. Is the matrix column naming consistent?"
         )
 
     matrix_cols = [sid for sid in specimen_ids if sid in matrix_columns]

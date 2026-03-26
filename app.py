@@ -42,9 +42,8 @@ from iwa_rnaseq_reporter.legacy.deg_input import (
     build_group_summary,
     build_comparison_sample_table,
 )
-from iwa_rnaseq_reporter.legacy.deg_preview import (
-    build_deg_preview_table,
-    summarize_deg_preview,
+from iwa_rnaseq_reporter.legacy.deg_stats import (
+    compute_statistical_deg,
 )
 import plotly.express as px
 
@@ -623,59 +622,74 @@ if "dataset" in st.session_state:
         deg_input_obj = None
 
     # --------------------------------------------------
-    # 14. DEG Preview Table
+    # 14. DEG Analysis (Statistical)
     # --------------------------------------------------
-    st.header("14. DEG Preview Table")
+    st.header("14. DEG Analysis")
 
     if deg_input_obj is not None:
         try:
-            # UI Refinement: Added abs_log2_fc as the primary sort option
-            sort_options = ["abs_log2_fc", "log2_fc", "mean_group_a", "mean_group_b", "feature_id"]
-            p1, p2 = st.columns(2)
+            sort_options = ["padj", "p_value", "abs_log2_fc", "log2_fc", "mean_group_a", "mean_group_b", "feature_id"]
+            
+            p1, p2, p3, p4 = st.columns(4)
             with p1:
+                p_thresh = st.number_input("P-value threshold (padj)", min_value=0.0, max_value=1.0, value=0.05, step=0.01)
+            with p2:
+                fc_thresh = st.number_input("|log2 FC| threshold", min_value=0.0, max_value=10.0, value=1.0, step=0.1)
+            with p3:
                 preview_sort_by = st.selectbox(
-                    "Sort preview table by",
+                    "Sort table by",
                     options=sort_options,
                     index=0,
                 )
-            with p2:
+            with p4:
                 preview_top_n = st.number_input(
                     "Rows to display",
                     min_value=10,
-                    max_value=500,
-                    value=50,
+                    max_value=1000,
+                    value=100,
                     step=10,
                 )
 
-            # Build preview with direction and rank
-            deg_preview_df = build_deg_preview_table(
-                deg_input_obj,
-                sort_by=preview_sort_by,
-                ascending=False if preview_sort_by == "abs_log2_fc" else True,
-            )
+            # Compute DEG
+            deg_res = compute_statistical_deg(deg_input_obj)
+            res_df = deg_res.result_table
 
-            preview_summary = summarize_deg_preview(deg_preview_df)
+            # Sort
+            if preview_sort_by in res_df.columns:
+                ascending = True if preview_sort_by in ["padj", "p_value"] else False
+                res_df = res_df.sort_values(by=preview_sort_by, ascending=ascending)
+
+            sig_up = res_df[(res_df["padj"] < p_thresh) & (res_df["log2_fc"] > fc_thresh)]
+            sig_dn = res_df[(res_df["padj"] < p_thresh) & (res_df["log2_fc"] < -fc_thresh)]
 
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Features", preview_summary["n_features"])
-            c2.metric("Positive log2FC (Up)", preview_summary["n_positive_fc"])
-            c3.metric("Negative log2FC (Down)", preview_summary["n_negative_fc"])
+            c1.metric("Features Tested", deg_res.n_features_tested)
+            c2.metric("Significant Up", len(sig_up))
+            c3.metric("Significant Down", len(sig_dn))
             c4.metric(
                 "Max |log2FC|",
-                f"{preview_summary['max_abs_log2_fc']:.3f}" if preview_summary["max_abs_log2_fc"] is not None else "NA",
+                f"{res_df['abs_log2_fc'].max():.3f}" if not res_df.empty else "NA",
             )
 
             st.caption(
-                "Preview table only. Statistical testing (p-value) is not implemented yet. "
-                "Rank is based on absolute log2 fold change."
+                f"Statistical testing using Welch's t-test with BH FDR. "
+                f"Showing features with padj < {p_thresh} and |log2_fc| > {fc_thresh} as significant."
             )
 
             st.dataframe(
-                format_display_df(deg_preview_df.head(int(preview_top_n))),
+                format_display_df(res_df.head(int(preview_top_n))),
                 use_container_width=True,
+            )
+            
+            csv = res_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="Download full DEG table as CSV",
+                data=csv,
+                file_name=f"deg_results_{deg_res.group_a}_vs_{deg_res.group_b}.csv",
+                mime="text/csv",
             )
 
         except Exception as e:
-            st.error(f"Failed to build DEG preview table: {e}")
+            st.error(f"Failed to run DEG analysis: {e}")
     else:
-        st.info("Build a valid comparison design to preview DEG-like results.")
+        st.info("Build a valid comparison design to run DEG analysis.")
