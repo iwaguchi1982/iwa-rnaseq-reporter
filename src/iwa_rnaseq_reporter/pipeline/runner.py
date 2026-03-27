@@ -122,7 +122,7 @@ def build_execution_run(plan: ResolvedComparisonPlan, result_spec: ResultSpec, p
         schema_version="0.1.0",
         run_id=f"RUN_{plan.comparison_id}",
         app_name="iwa_rnaseq_reporter",
-        app_version="0.3.0",
+        app_version="0.3.5",
         started_at=started_at,
         input_refs=[plan.input_matrix_id, plan.comparison_id],
         output_refs=[result_spec.result_id, payload_spec.report_payload_id],

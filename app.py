@@ -660,25 +660,35 @@ if "dataset" in st.session_state:
 
                 # Try to enrich with gene_symbol if not present
                 if "gene_symbol" not in res_df.columns:
-                    tx2gene_path = ds.run_summary.get("tx2gene_path")
-                    if tx2gene_path:
+                    # 1. Try from run_summary
+                    tx2_path_val = ds.run_summary.get("tx2gene_path") or ds.run_summary.get("feature_annotation_path")
+                    
+                    # 2. Try auto-detect in results/ or base_dir/
+                    search_paths = []
+                    if tx2_path_val: search_paths.append(Path(tx2_path_val))
+                    search_paths.append(ds.results_dir / "tx2gene.tsv")
+                    search_paths.append(ds.results_dir / "feature_annotation.tsv")
+                    search_paths.append(ds.base_dir / "tx2gene.tsv")
+                    search_paths.append(ds.base_dir / "feature_annotation.tsv")
+
+                    for p_try in search_paths:
                         try:
-                            # Try absolute first, then relative to base_dir
-                            p = Path(tx2gene_path)
-                            if not p.is_absolute():
-                                p = (ds.base_dir / p).resolve()
-                            
+                            p = p_try if p_try.is_absolute() else (ds.base_dir / p_try).resolve()
                             if p.exists():
                                 ann_df = pd.read_csv(p, sep="\t" if p.suffix == ".tsv" else None, engine="python")
                                 # Map gene_id to gene_symbol if both exist
-                                if "gene_id" in ann_df.columns and "gene_symbol" in ann_df.columns:
-                                    mapping = ann_df[["gene_id", "gene_symbol"]].drop_duplicates().set_index("gene_id")
+                                id_col = "gene_id" if "gene_id" in ann_df.columns else "feature_id" if "feature_id" in ann_df.columns else None
+                                sym_col = "gene_symbol" if "gene_symbol" in ann_df.columns else "symbol" if "symbol" in ann_df.columns else None
+                                
+                                if id_col and sym_col:
+                                    mapping = ann_df[[id_col, sym_col]].drop_duplicates().set_index(id_col)
                                     res_df = res_df.join(mapping, on="feature_id")
-                                elif "feature_id" in ann_df.columns and "gene_symbol" in ann_df.columns:
-                                    mapping = ann_df[["feature_id", "gene_symbol"]].drop_duplicates().set_index("feature_id")
-                                    res_df = res_df.join(mapping, on="feature_id")
+                                    # Rename if it ended up as 'symbol'
+                                    if sym_col != "gene_symbol":
+                                        res_df = res_df.rename(columns={sym_col: "gene_symbol"})
+                                    break # Found and loaded
                         except Exception:
-                            pass
+                            continue
 
                 if preview_sort_by in res_df.columns:
                     ascending = True if preview_sort_by in ["padj", "p_value"] else False
@@ -702,8 +712,8 @@ if "dataset" in st.session_state:
 
                 c1, c2, c3, c4 = st.columns(4)
                 c1.metric("Features Tested", deg_res.n_features_tested)
-                c2.metric(f"Significant Up", len(sig_up))
-                c3.metric(f"Significant Down", len(sig_dn))
+                c2.metric(f"Up in {deg_res.group_a[:10]}...", len(sig_up), help=f"Log2FC > {fc_thresh} & padj < {p_thresh}")
+                c3.metric(f"Down in {deg_res.group_a[:10]}...", len(sig_dn), help=f"Log2FC < -{fc_thresh} & padj < {p_thresh}")
                 c4.metric("Max |log2FC|", f"{res_df['abs_log2_fc'].max():.3f}" if not res_df.empty else "NA")
 
                 # Volcano Plot
