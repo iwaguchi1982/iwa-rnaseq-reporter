@@ -30,6 +30,7 @@ class ReporterDataset:
     sample_qc_summary: pd.DataFrame
     gene_tpm: pd.DataFrame
     gene_numreads: pd.DataFrame
+    feature_annotation: pd.DataFrame | None = None
     transcript_tpm: pd.DataFrame | None = None
     transcript_numreads: pd.DataFrame | None = None
     resolved_paths: dict[str, Path] = field(default_factory=dict)

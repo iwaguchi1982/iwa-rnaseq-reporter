@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import pandas as pd
 
 from .io_utils import read_json, read_csv_basic, read_csv_indexed
 from .manifest import load_manifest, resolve_manifest_paths
@@ -98,6 +99,8 @@ def load_reporter_dataset(manifest_path: str | Path) -> ReporterDataset:
     # Optional files
     transcript_tpm = None
     transcript_numreads = None
+    feature_annotation = None
+
     if resolved.get("transcript_tpm") and resolved["transcript_tpm"].exists():
         transcript_tpm = normalize_expression_matrix(
             read_csv_indexed(resolved["transcript_tpm"])
@@ -106,6 +109,51 @@ def load_reporter_dataset(manifest_path: str | Path) -> ReporterDataset:
         transcript_numreads = normalize_expression_matrix(
             read_csv_indexed(resolved["transcript_numreads"])
         )
+
+    # Load feature_annotation if available
+    # Check manifest first, then auto-resolve
+    fa_path = resolved.get("feature_annotation")
+    
+    # Standard v0.5.0 results structure: results/feature_annotation.tsv
+    # manifest is at results/dataset_manifest.json
+    results_dir = actual_manifest_path.parent
+    base_dir = results_dir.parent
+
+    if not fa_path or not fa_path.exists():
+        # Fallback to auto-discovery in results_dir or base_dir
+        if (results_dir / "feature_annotation.tsv").exists():
+            fa_path = results_dir / "feature_annotation.tsv"
+        elif (base_dir / "feature_annotation.tsv").exists():
+            fa_path = base_dir / "feature_annotation.tsv"
+    
+    if fa_path and fa_path.exists():
+        # Update resolved for tracking
+        resolved["feature_annotation"] = fa_path
+        try:
+            # feature_annotation is typically a TSV or CSV
+            sep = "\t" if fa_path.suffix == ".tsv" else ","
+            feature_annotation = pd.read_csv(fa_path, sep=sep)
+            # Ensure v0.5.0 contract: feature_id must exist
+            if "feature_id" not in feature_annotation.columns:
+                messages.append(ValidationMessage(
+                    level="warning",
+                    code="annotation_invalid",
+                    message="feature_annotation.tsv lacks 'feature_id' column. Ignoring annotation file."
+                ))
+                feature_annotation = None
+            elif "gene_symbol" not in feature_annotation.columns:
+                messages.append(ValidationMessage(
+                    level="warning",
+                    code="annotation_incomplete",
+                    message="feature_annotation.tsv lacks 'gene_symbol' column. Symbols will be unavailable."
+                ))
+                # Keep it anyway, maybe other columns are useful later, but display_label will fallback
+        except Exception as e:
+            messages.append(ValidationMessage(
+                level="warning",
+                code="annotation_load_error",
+                message=f"Failed to load feature_annotation: {e}"
+            ))
 
     # 5. Validation after reading
     messages += validate_sample_metadata(sample_metadata)
@@ -140,6 +188,7 @@ def load_reporter_dataset(manifest_path: str | Path) -> ReporterDataset:
         sample_qc_summary=sample_qc_summary,
         gene_tpm=gene_tpm,
         gene_numreads=gene_numreads,
+        feature_annotation=feature_annotation,
         transcript_tpm=transcript_tpm,
         transcript_numreads=transcript_numreads,
         sample_ids_all=run_summary.get("sample_ids_all", []),

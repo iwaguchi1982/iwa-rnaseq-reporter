@@ -14,7 +14,7 @@ class MatrixSpec:
     feature_id_system: str
     sample_axis: str
     matrix_path: str
-    feature_annotation_path: str
+    feature_annotation_path: Optional[str] = None
     source_assay_ids: List[str] = field(default_factory=list)
     source_specimen_ids: List[str] = field(default_factory=list)
     source_subject_ids: List[str] = field(default_factory=list)
@@ -41,7 +41,7 @@ class MatrixSpec:
             feature_id_system=data.get("feature_id_system", ""),
             sample_axis=data.get("sample_axis", ""),
             matrix_path=data.get("matrix_path", ""),
-            feature_annotation_path=data.get("feature_annotation_path", ""),
+            feature_annotation_path=data.get("feature_annotation_path") or None,
             source_assay_ids=data.get("source_assay_ids", []),
             source_specimen_ids=data.get("source_specimen_ids", []),
             source_subject_ids=data.get("source_subject_ids", []),

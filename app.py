@@ -12,7 +12,10 @@ from iwa_rnaseq_reporter.legacy.analysis import (
     get_analysis_sample_ids,
     build_analysis_matrix,
     build_analysis_sample_table,
+    add_display_labels,
 )
+import plotly.express as px
+import numpy as np
 from iwa_rnaseq_reporter.legacy.pca_utils import (
     select_top_variable_features,
     run_pca,
@@ -73,7 +76,7 @@ def build_file_status_df(ds) -> pd.DataFrame:
     rows = []
 
     required_keys = ["sample_metadata", "sample_qc_summary", "gene_tpm", "gene_numreads", "run_summary"]
-    optional_keys = ["transcript_tpm", "transcript_numreads", "sample_sheet", "run_config", "run_log"]
+    optional_keys = ["transcript_tpm", "transcript_numreads", "feature_annotation", "sample_sheet", "run_config", "run_log"]
 
     for key in required_keys:
         path = ds.resolved_paths.get(key)
@@ -147,7 +150,7 @@ if "dataset" in st.session_state:
     st.header("2. Load Status")
 
     required_keys = ["sample_metadata", "sample_qc_summary", "gene_tpm", "gene_numreads", "run_summary"]
-    optional_keys = ["transcript_tpm", "transcript_numreads", "sample_sheet", "run_config", "run_log"]
+    optional_keys = ["transcript_tpm", "transcript_numreads", "feature_annotation", "sample_sheet", "run_config", "run_log"]
 
     found_required = sum(1 for k in required_keys if ds.resolved_paths.get(k) and ds.resolved_paths[k].exists())
     found_optional = sum(1 for k in optional_keys if ds.resolved_paths.get(k) and ds.resolved_paths[k].exists())
@@ -324,7 +327,13 @@ if "dataset" in st.session_state:
             st.write(f"- min_feature_mean: `{min_feature_mean}`")
 
         with st.expander("Analysis Matrix Preview", expanded=False):
-            st.dataframe(analysis_matrix.head(10), use_container_width=True)
+            # Show labeled preview for wet-first usability
+            labeled_preview = add_display_labels(analysis_matrix.head(10), ds.feature_annotation)
+            # Reorder to show labels first
+            pref_cols = ["display_label", "gene_symbol", "feature_id"]
+            other_cols = [c for c in labeled_preview.columns if c not in pref_cols]
+            labeled_preview = labeled_preview[pref_cols + other_cols]
+            st.dataframe(format_display_df(labeled_preview), use_container_width=True)
 
     except Exception as e:
         st.error(f"Failed to prepare analysis matrix: {e}")
@@ -473,18 +482,29 @@ if "dataset" in st.session_state:
     st.header("11. Gene Search")
 
     if analysis_matrix is not None:
-        search_query = st.text_input("Search for Gene/Feature ID", placeholder="e.g. ACT1 or YAL001C")
+        search_query = st.text_input("Search for Gene/Feature ID or Symbol", placeholder="e.g. ACT1 or YAL001C")
         if search_query:
-            hits = search_features(analysis_matrix.index, search_query)
-            if not hits:
+            # Standardized: Build search index with display labels
+            search_base = pd.DataFrame({"feature_id": analysis_matrix.index})
+            search_df = add_display_labels(search_base, ds.feature_annotation)
+            
+            query = search_query.lower()
+            mask = (
+                search_df["feature_id"].str.lower().str.contains(query) | 
+                search_df["gene_symbol"].fillna("").str.lower().str.contains(query)
+            )
+            hits_df = search_df[mask].head(50)
+            
+            if hits_df.empty:
                 st.info(f"No matches found for '{search_query}'")
             else:
-                selected_gene = st.selectbox(f"Found {len(hits)} matches", options=hits)
-                if selected_gene:
+                hit_map = {row["feature_id"]: f"{row['display_label']} ({row['feature_id']})" for _, row in hits_df.iterrows()}
+                selected_id = st.selectbox(f"Found {len(hits_df)} matches", options=list(hit_map.keys()), format_func=lambda x: hit_map[x])
+                if selected_id:
                     try:
                         profile_df = build_feature_profile_table(
                             ds,
-                            selected_gene,
+                            selected_id,
                             matrix_kind=matrix_kind,
                             log2p1=log2p1,
                             use_exclude=use_exclude,
@@ -492,7 +512,7 @@ if "dataset" in st.session_state:
                             min_feature_mean=float(min_feature_mean),
                         )
 
-                        st.subheader(f"Profile: {selected_gene}")
+                        st.subheader(f"Profile: {hit_map[selected_id]}")
                         
                         # Simple bar chart for expression
                         st.bar_chart(profile_df, x="sample_id", y="expression_value", color="group" if "group" in profile_df.columns else None)
@@ -500,7 +520,7 @@ if "dataset" in st.session_state:
                         with st.expander("Show Profile Table", expanded=False):
                             st.dataframe(format_display_df(profile_df), use_container_width=True)
                     except Exception as e:
-                        st.error(f"Failed to build profile for {selected_gene}: {e}")
+                        st.error(f"Failed to build profile for {selected_id}: {e}")
 
     # --------------------------------------------------
     # 12. Top Variable Features
@@ -512,6 +532,14 @@ if "dataset" in st.session_state:
         
         try:
             top_stats_df = get_top_variable_features(analysis_matrix, top_n=int(top_n_stats))
+            # Align with display_label contract
+            top_stats_df = add_display_labels(top_stats_df, ds.feature_annotation)
+            
+            # Reorder for display
+            pref_stats = ["display_label", "gene_symbol", "feature_id", "mean", "variance", "nonzero_samples", "max_value"]
+            display_cols_stats = [c for c in pref_stats if c in top_stats_df.columns]
+            top_stats_df = top_stats_df[display_cols_stats]
+            
             st.write(f"Top {len(top_stats_df)} features by variance in the current analysis matrix.")
             st.dataframe(format_display_df(top_stats_df), use_container_width=True)
         except Exception as e:
@@ -643,7 +671,7 @@ if "dataset" in st.session_state:
 
         if "deg_res" in st.session_state:
             try:
-                sort_options = ["padj", "p_value", "abs_log2_fc", "log2_fc", "mean_group_a", "mean_group_b", "feature_id"]
+                sort_options = ["padj", "p_value", "abs_log2_fc", "log2_fc", "display_label", "gene_symbol", "mean_group_a", "mean_group_b", "feature_id"]
                 
                 p1, p2, p3, p4 = st.columns(4)
                 with p1:
@@ -658,43 +686,14 @@ if "dataset" in st.session_state:
                 deg_res = st.session_state.deg_res
                 res_df = deg_res.result_table.copy()
 
-                # Try to enrich with gene_symbol if not present
-                if "gene_symbol" not in res_df.columns:
-                    # 1. Try from run_summary
-                    tx2_path_val = ds.run_summary.get("tx2gene_path") or ds.run_summary.get("feature_annotation_path")
-                    
-                    # 2. Try auto-detect in results/ or base_dir/
-                    search_paths = []
-                    if tx2_path_val: search_paths.append(Path(tx2_path_val))
-                    search_paths.append(ds.results_dir / "tx2gene.tsv")
-                    search_paths.append(ds.results_dir / "feature_annotation.tsv")
-                    search_paths.append(ds.base_dir / "tx2gene.tsv")
-                    search_paths.append(ds.base_dir / "feature_annotation.tsv")
-
-                    for p_try in search_paths:
-                        try:
-                            p = p_try if p_try.is_absolute() else (ds.base_dir / p_try).resolve()
-                            if p.exists():
-                                ann_df = pd.read_csv(p, sep="\t" if p.suffix == ".tsv" else None, engine="python")
-                                # Map gene_id to gene_symbol if both exist
-                                id_col = "gene_id" if "gene_id" in ann_df.columns else "feature_id" if "feature_id" in ann_df.columns else None
-                                sym_col = "gene_symbol" if "gene_symbol" in ann_df.columns else "symbol" if "symbol" in ann_df.columns else None
-                                
-                                if id_col and sym_col:
-                                    mapping = ann_df[[id_col, sym_col]].drop_duplicates().set_index(id_col)
-                                    res_df = res_df.join(mapping, on="feature_id")
-                                    # Rename if it ended up as 'symbol'
-                                    if sym_col != "gene_symbol":
-                                        res_df = res_df.rename(columns={sym_col: "gene_symbol"})
-                                    break # Found and loaded
-                        except Exception:
-                            continue
+                # Optimized: Use the new standardized annotation join
+                res_df = add_display_labels(res_df, ds.feature_annotation)
 
                 if preview_sort_by in res_df.columns:
                     ascending = True if preview_sort_by in ["padj", "p_value"] else False
                     res_df = res_df.sort_values(by=preview_sort_by, ascending=ascending)
 
-                preferred_cols = ["feature_id", "gene_symbol", "feature_label", "log2_fc", "padj", "p_value", "direction", "mean_group_a", "mean_group_b", "abs_log2_fc"]
+                preferred_cols = ["rank_by_padj", "display_label", "gene_symbol", "feature_id", "log2_fc", "padj", "p_value", "direction", "mean_group_a", "mean_group_b", "abs_log2_fc"]
                 display_cols = [c for c in preferred_cols if c in res_df.columns]
                 other_cols = [c for c in res_df.columns if c not in display_cols]
                 res_df = res_df[display_cols + other_cols]
@@ -722,7 +721,6 @@ if "dataset" in st.session_state:
                 if len(sig_up) == 0 and len(sig_dn) == 0:
                     st.warning("⚠️ 現在の閾値では有意遺伝子は 0 件です。閾値を緩めるか、p_value ベースでの確認もご検討ください。")
                 
-                import numpy as np
                 volcano_df = res_df.copy()
                 volcano_df["-log10(padj)"] = -np.log10(volcano_df["padj"].fillna(1.0).clip(lower=1e-300))
                 
@@ -736,11 +734,8 @@ if "dataset" in st.session_state:
 
                 volcano_df["Significance"] = volcano_df.apply(get_sig_category, axis=1)
                 
-                hover_cols = ["feature_id", "log2_fc", "padj", "p_value"]
-                if "gene_symbol" in volcano_df.columns:
-                    hover_cols.insert(1, "gene_symbol")
-                elif "feature_label" in volcano_df.columns:
-                    hover_cols.insert(1, "feature_label")
+                hover_cols = ["display_label", "gene_symbol", "feature_id", "log2_fc", "padj", "p_value"]
+                hover_cols = [c for c in hover_cols if c in volcano_df.columns]
 
                 fig = px.scatter(
                     volcano_df,
@@ -761,17 +756,17 @@ if "dataset" in st.session_state:
                 fig.add_vline(x=fc_thresh, line_dash="dash", line_color="black", annotation_text=f"log2FC = {fc_thresh}")
                 fig.add_vline(x=-fc_thresh, line_dash="dash", line_color="black", annotation_text=f"log2FC = -{fc_thresh}")
                 
-                # Annotate top 10 Up and top 10 Down genes by log2FC to make the plot look "pro"
-                top_up = volcano_df[volcano_df["log2_fc"] > 0].sort_values("log2_fc", ascending=False).head(10)
-                top_down = volcano_df[volcano_df["log2_fc"] < 0].sort_values("log2_fc", ascending=True).head(10)
-                top_genes = pd.concat([top_up, top_down])
+                # Human-friendly Labeling: Top significant genes with high fold change
+                # Annotate top 10 Up and top 10 Down (limit to 20 labels total)
+                top_up = volcano_df[volcano_df["Significance"] == f"Up in {deg_res.group_a}"].sort_values("padj").head(10)
+                top_down = volcano_df[volcano_df["Significance"] == f"Down in {deg_res.group_a}"].sort_values("padj").head(10)
+                label_candidates = pd.concat([top_up, top_down])
                 
-                for _idx, row in top_genes.iterrows():
-                    label = f"{row['gene_symbol']} ({row['feature_id']})" if pd.notna(row.get("gene_symbol")) else row["feature_id"]
+                for _, row in label_candidates.iterrows():
                     fig.add_annotation(
                         x=row["log2_fc"],
                         y=row["-log10(padj)"],
-                        text=label,
+                        text=row["display_label"],
                         showarrow=True,
                         arrowhead=1,
                         ax=40,
@@ -788,11 +783,11 @@ if "dataset" in st.session_state:
                 t1, t2 = st.columns(2)
                 with t1:
                     st.write(f"**Top Up in {deg_res.group_a}**")
-                    display_cols_top = [c for c in ["feature_id", "gene_symbol", "feature_label", "log2_fc", "padj"] if c in sig_up.columns]
+                    display_cols_top = [c for c in ["display_label", "gene_symbol", "feature_id", "log2_fc", "padj"] if c in sig_up.columns]
                     st.dataframe(format_display_df(sig_up.sort_values("log2_fc", ascending=False).head(10)[display_cols_top]), use_container_width=True)
                 with t2:
                     st.write(f"**Top Down in {deg_res.group_a}**")
-                    display_cols_top = [c for c in ["feature_id", "gene_symbol", "feature_label", "log2_fc", "padj"] if c in sig_dn.columns]
+                    display_cols_top = [c for c in ["display_label", "gene_symbol", "feature_id", "log2_fc", "padj"] if c in sig_dn.columns]
                     st.dataframe(format_display_df(sig_dn.sort_values("log2_fc", ascending=True).head(10)[display_cols_top]), use_container_width=True)
 
                 st.subheader("DEG Results Table")

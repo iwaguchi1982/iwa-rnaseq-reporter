@@ -146,3 +146,76 @@ def build_analysis_sample_table(
     remaining = [c for c in md.columns if c not in ordered]
 
     return md[ordered + remaining]
+
+
+def add_display_labels(
+    df: pd.DataFrame, 
+    feature_annotation: pd.DataFrame | None,
+    id_column: str = "feature_id"
+) -> pd.DataFrame:
+    """
+    Merge gene symbols from feature_annotation into the target DataFrame.
+    Adds 'gene_symbol' and 'display_label' columns.
+    If annotation is missing or symbol is empty, 'display_label' falls back to the ID.
+    """
+    out = df.copy()
+    
+    # 1. Identify the feature identifier column
+    # Fallback candidates if the explicit id_column is not found
+    id_candidates = [id_column, "feature_id", "gene_id", "transcript_id"]
+    
+    found_id_col = None
+    for cand in id_candidates:
+        if cand in out.columns:
+            found_id_col = cand
+            break
+            
+    if found_id_col is None:
+        # Check index
+        idx_name = str(out.index.name) if out.index.name else "None"
+        if any(cand.lower() in idx_name.lower() for cand in id_candidates) or not out.index.name:
+            out = out.reset_index()
+            # The newly reset index is the first column
+            # Use original index name if it exists, else use id_column
+            old_idx_col = out.columns[0]
+            out = out.rename(columns={old_idx_col: id_column})
+            found_id_col = id_column
+        else:
+            # Cannot identify ID column
+            return out
+
+    # Standardize our internal ID column name if necessary
+    if found_id_col != id_column:
+        out = out.rename(columns={found_id_col: id_column})
+        found_id_col = id_column
+
+    if feature_annotation is None or "feature_id" not in feature_annotation.columns:
+        # Fallback: display_label = feature_id
+        out["gene_symbol"] = ""
+        out["display_label"] = out[id_column].astype(str)
+        return out
+
+    # 2. Merge annotation
+    if "gene_symbol" not in feature_annotation.columns:
+        # Annotation file exists but lacks the required gene_symbol column
+        out["gene_symbol"] = ""
+        out["display_label"] = out[id_column].astype(str)
+        return out
+
+    # Ensure feature_id is string for stable join
+    fa = feature_annotation[["feature_id", "gene_symbol"]].copy()
+    fa["feature_id"] = fa["feature_id"].astype(str)
+    out[id_column] = out[id_column].astype(str)
+    
+    out = out.merge(fa, left_on=id_column, right_on="feature_id", how="left", suffixes=("", "_ann"))
+    
+    # Clean up duplicate feature_id if necessary
+    if "feature_id_ann" in out.columns:
+        out = out.drop(columns=["feature_id_ann"])
+
+    # 3. Create display_label
+    # Use gene_symbol if available and not NaN/empty, else fallback to feature_id
+    out["gene_symbol"] = out["gene_symbol"].fillna("")
+    out["display_label"] = out["gene_symbol"].where(out["gene_symbol"] != "", out[id_column])
+    
+    return out
