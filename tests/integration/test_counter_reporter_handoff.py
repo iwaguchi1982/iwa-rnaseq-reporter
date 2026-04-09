@@ -3,11 +3,17 @@ from pathlib import Path
 import sys
 from unittest.mock import MagicMock, patch
 
-# Base directory for the orchestra
-ORCHESTRA_ROOT = Path("/home/manager/iwa_bio_analysis_orchestra")
+# Dynamic path resolution to avoid absolute path dependency
+THIS_FILE = Path(__file__).resolve()
+REPORTER_ROOT = THIS_FILE.parents[2]  # tests/integration -> tests -> reporter_root
+ORCHESTRA_ROOT = REPORTER_ROOT.parent # iwa_bio_analysis_orchestra
 
 # Fixture paths from iwa_rnaseq_counter
 COUNTER_FIXTURES_ROOT = ORCHESTRA_ROOT / "iwa_rnaseq_counter/tests/fixtures/analysis_bundle"
+if not COUNTER_FIXTURES_ROOT.exists():
+    raise RuntimeError(f"Counter fixtures not found (expected at {COUNTER_FIXTURES_ROOT}). "
+                       "Ensure sister repo iwa-rnaseq-counter is present.")
+
 MINIMAL_BUNDLE_MANIFEST = COUNTER_FIXTURES_ROOT / "valid_minimal_bundle/results/analysis_bundle_manifest.json"
 WARNING_BUNDLE_MANIFEST = COUNTER_FIXTURES_ROOT / "valid_with_warnings/results/analysis_bundle_manifest.json"
 

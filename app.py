@@ -51,6 +51,8 @@ from iwa_rnaseq_reporter.legacy.deg_stats import (
 import plotly.express as px
 from iwa_rnaseq_reporter.io.bundle_loader import load_reporter_analysis_bundle
 from iwa_rnaseq_reporter.models.analysis_bundle_view_model import ReporterAnalysisBundle, BundleDiagnostic
+from iwa_rnaseq_reporter.io.input_resolution import resolve_reporter_input_paths
+from iwa_rnaseq_reporter.app.resolved_input_context import ResolvedInputContext
 
 st.set_page_config(page_title="iwa-rnaseq-reporter", layout="wide")
 st.title("iwa-rnaseq-reporter")
@@ -213,24 +215,54 @@ if st.button("Load Dataset"):
     if not input_path_str:
         st.error("Please provide a path.")
     else:
-        input_path = Path(input_path_str)
-        try:
-            ds = load_reporter_dataset(input_path)
-            st.session_state["dataset"] = ds
-            st.success("Successfully loaded dataset!")
-            # v0.12.3: Attempt to load bundle
-            _try_load_bundle(input_path_str)
-        except ReporterLoadError as e:
-            st.error("Failed to load dataset.")
-            for msg in e.messages:
-                if msg.level == "fatal":
-                    st.error(f"FATAL [{msg.code}]: {msg.message}")
-                elif msg.level == "warning":
-                    st.warning(f"WARNING [{msg.code}]: {msg.message}")
+        # v0.13.1/2: Normalize input resolution and context
+        resolution = resolve_reporter_input_paths(input_path_str)
+        context = ResolvedInputContext.from_resolution_result(resolution)
+        st.session_state["resolved_input_context"] = context
+        
+        if context.is_unresolved:
+            st.error("Failed to resolve input path.")
+            for msg in context.resolution_messages:
+                st.info(msg)
+        else:
+            try:
+                # Load dataset if resolved
+                if context.has_dataset_manifest:
+                    ds = load_reporter_dataset(context.resolved_dataset_manifest_path)
+                    st.session_state["dataset"] = ds
                 else:
-                    st.info(f"INFO [{msg.code}]: {msg.message}")
-        except Exception as e:
-            st.exception(e)
+                    st.warning("Dataset manifest not resolved; entering bundle-only mode (partial support).")
+                
+                # Load bundle if resolved
+                if context.has_bundle_manifest:
+                    _try_load_bundle(context.resolved_bundle_manifest_path)
+                else:
+                    st.session_state["analysis_bundle"] = None
+                    st.session_state["analysis_bundle_diagnostic"] = None
+                    
+                st.success(f"Input resolved as {context.input_kind} ({context.load_mode})")
+                
+            except ReporterLoadError as e:
+                st.error("Failed to load dataset.")
+                for msg in e.messages:
+                    if msg.level == "fatal":
+                        st.error(f"FATAL [{msg.code}]: {msg.message}")
+                    elif msg.level == "warning":
+                        st.warning(f"WARNING [{msg.code}]: {msg.message}")
+                    else:
+                        st.info(f"INFO [{msg.code}]: {msg.message}")
+            except Exception as e:
+                st.exception(e)
+
+if "resolved_input_context" in st.session_state:
+    ctx = st.session_state["resolved_input_context"]
+    with st.expander("Input Resolution Details", expanded=False):
+        st.write(f"**Input Kind:** `{ctx.input_kind}`")
+        st.write(f"**Load Mode:** `{ctx.load_mode}`")
+        st.write(f"**Resolved Dataset:** `{ctx.resolved_dataset_manifest_path}`")
+        st.write(f"**Resolved Bundle:** `{ctx.resolved_bundle_manifest_path}`")
+        for msg in ctx.resolution_messages:
+            st.caption(f"- {msg}")
 
 if "dataset" in st.session_state:
     ds = st.session_state["dataset"]
