@@ -57,6 +57,7 @@ from iwa_rnaseq_reporter.app.resolved_input_context import ResolvedInputContext
 from iwa_rnaseq_reporter.app.reporter_session_context import ReporterSessionContext
 from iwa_rnaseq_reporter.app.entry_loader import load_reporter_entry_state
 from iwa_rnaseq_reporter.app.analysis_config import AnalysisConfig, validate_analysis_config
+from iwa_rnaseq_reporter.app.analysis_workspace_context import AnalysisWorkspaceContext
 
 st.set_page_config(page_title="iwa-rnaseq-reporter", layout="wide")
 st.title("iwa-rnaseq-reporter")
@@ -420,20 +421,29 @@ if session_ctx and session_ctx.is_dataset_ready:
             min_feature_mean=analysis_config.min_feature_mean,
         )
 
+        # v0.14.2: Consolidate into AnalysisWorkspaceContext
+        workspace = AnalysisWorkspaceContext(
+            dataset=ds,
+            analysis_config=analysis_config,
+            analysis_sample_ids=analysis_sample_ids,
+            analysis_sample_table=analysis_sample_table,
+            analysis_matrix=analysis_matrix,
+        )
+
         st.write(
-            f"**Analysis matrix shape:** `{analysis_matrix.shape[0]}` features × `{analysis_matrix.shape[1]}` samples"
+            f"**Analysis matrix shape:** `{workspace.feature_count}` features × `{workspace.sample_count}` samples"
         )
 
         with st.expander("Analysis Matrix Filtering Summary", expanded=False):
-            st.write(f"- matrix_kind: `{analysis_config.matrix_kind}`")
-            st.write(f"- log2p1: `{analysis_config.log2p1}`")
-            st.write(f"- use_exclude: `{analysis_config.use_exclude}`")
-            st.write(f"- min_feature_nonzero_samples: `{analysis_config.min_feature_nonzero_samples}`")
-            st.write(f"- min_feature_mean: `{analysis_config.min_feature_mean}`")
+            st.write(f"- matrix_kind: `{workspace.matrix_kind}`")
+            st.write(f"- log2p1: `{workspace.analysis_config.log2p1}`")
+            st.write(f"- use_exclude: `{workspace.analysis_config.use_exclude}`")
+            st.write(f"- min_feature_nonzero_samples: `{workspace.analysis_config.min_feature_nonzero_samples}`")
+            st.write(f"- min_feature_mean: `{workspace.analysis_config.min_feature_mean}`")
 
         with st.expander("Analysis Matrix Preview", expanded=False):
             # Show labeled preview for wet-first usability
-            labeled_preview = add_display_labels(analysis_matrix.head(10), ds.feature_annotation)
+            labeled_preview = add_display_labels(workspace.analysis_matrix.head(10), ds.feature_annotation)
             # Reorder to show labels first
             pref_cols = ["display_label", "gene_symbol", "feature_id"]
             other_cols = [c for c in labeled_preview.columns if c not in pref_cols]
@@ -442,14 +452,14 @@ if session_ctx and session_ctx.is_dataset_ready:
 
     except Exception as e:
         st.error(f"Failed to prepare analysis matrix: {e}")
-        analysis_matrix = None
+        workspace = None
 
     # --------------------------------------------------
     # 9. PCA Preview
     # --------------------------------------------------
     st.header("9. PCA Preview")
 
-    if analysis_matrix is not None:
+    if workspace is not None:
         p1, p2, p3 = st.columns(3)
         with p1:
             run_pca_flag = st.checkbox("Enable PCA preview", value=True)
@@ -466,7 +476,7 @@ if session_ctx and session_ctx.is_dataset_ready:
 
         if run_pca_flag:
             try:
-                num_analysis_samples = analysis_matrix.shape[1]
+                num_analysis_samples = workspace.sample_count
                 if num_analysis_samples < 2:
                     st.warning("PCA preview requires at least 2 selected samples.")
                 else:
@@ -476,7 +486,7 @@ if session_ctx and session_ctx.is_dataset_ready:
                         )
 
                     pca_input = select_top_variable_features(
-                        analysis_matrix,
+                        workspace.analysis_matrix,
                         top_n=int(top_variable_features),
                     )
 
@@ -487,10 +497,10 @@ if session_ctx and session_ctx.is_dataset_ready:
                     )
 
                     pca_plot_df = build_pca_plot_df(
-                        ds,
+                        workspace.dataset,
                         pca_scores_df,
                         explained_variance_ratio=explained,
-                        use_exclude=use_exclude,
+                        use_exclude=workspace.analysis_config.use_exclude,
                     )
 
                     st.write(
@@ -546,7 +556,7 @@ if session_ctx and session_ctx.is_dataset_ready:
     # --------------------------------------------------
     st.header("10. Sample Correlation")
 
-    if analysis_matrix is not None:
+    if workspace is not None:
         corr_method = st.selectbox(
             "Correlation method",
             options=["pearson", "spearman"],
@@ -555,7 +565,7 @@ if session_ctx and session_ctx.is_dataset_ready:
 
         try:
             corr_df = compute_sample_correlation(
-                analysis_matrix,
+                workspace.analysis_matrix,
                 method=corr_method,
             )
 
@@ -575,7 +585,7 @@ if session_ctx and session_ctx.is_dataset_ready:
             )
 
             with st.expander("Sample Annotation Table", expanded=False):
-                ann_df = build_sample_annotation_table(ds, list(corr_df.columns))
+                ann_df = build_sample_annotation_table(workspace.dataset, list(corr_df.columns))
                 st.dataframe(format_display_df(ann_df), use_container_width=True)
 
         except Exception as e:
@@ -586,12 +596,12 @@ if session_ctx and session_ctx.is_dataset_ready:
     # --------------------------------------------------
     st.header("11. Gene Search")
 
-    if analysis_matrix is not None:
+    if workspace is not None:
         search_query = st.text_input("Search for Gene/Feature ID or Symbol", placeholder="e.g. ACT1 or YAL001C")
         if search_query:
             # Standardized: Build search index with display labels
-            search_base = pd.DataFrame({"feature_id": analysis_matrix.index})
-            search_df = add_display_labels(search_base, ds.feature_annotation)
+            search_base = pd.DataFrame({"feature_id": workspace.analysis_matrix.index})
+            search_df = add_display_labels(search_base, workspace.dataset.feature_annotation)
             
             query = search_query.lower()
             mask = (
@@ -608,13 +618,13 @@ if session_ctx and session_ctx.is_dataset_ready:
                 if selected_id:
                     try:
                         profile_df = build_feature_profile_table(
-                            ds,
+                            workspace.dataset,
                             selected_id,
-                            matrix_kind=matrix_kind,
-                            log2p1=log2p1,
-                            use_exclude=use_exclude,
-                            min_feature_nonzero_samples=int(min_feature_nonzero_samples),
-                            min_feature_mean=float(min_feature_mean),
+                            matrix_kind=workspace.matrix_kind,
+                            log2p1=workspace.analysis_config.log2p1,
+                            use_exclude=workspace.analysis_config.use_exclude,
+                            min_feature_nonzero_samples=workspace.analysis_config.min_feature_nonzero_samples,
+                            min_feature_mean=workspace.analysis_config.min_feature_mean,
                         )
 
                         st.subheader(f"Profile: {hit_map[selected_id]}")
@@ -715,15 +725,15 @@ if session_ctx and session_ctx.is_dataset_ready:
 
                 try:
                     deg_input_obj = build_deg_input(
-                        ds,
-                        matrix_kind=matrix_kind,
+                        workspace.dataset,
+                        matrix_kind=workspace.matrix_kind,
                         group_column=comparison_column,
                         group_a=group_a,
                         group_b=group_b,
-                        log2p1=log2p1,
-                        use_exclude=use_exclude,
-                        min_feature_nonzero_samples=int(min_feature_nonzero_samples),
-                        min_feature_mean=float(min_feature_mean),
+                        log2p1=workspace.analysis_config.log2p1,
+                        use_exclude=workspace.analysis_config.use_exclude,
+                        min_feature_nonzero_samples=workspace.analysis_config.min_feature_nonzero_samples,
+                        min_feature_mean=workspace.analysis_config.min_feature_mean,
                     )
 
                     issues = validate_deg_input(deg_input_obj, min_samples_per_group=2)

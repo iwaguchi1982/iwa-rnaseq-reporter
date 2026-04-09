@@ -1,8 +1,5 @@
 from dataclasses import dataclass
-from typing import List
-
-# Standard matrix kinds supported by the application
-VALID_MATRIX_KINDS = ["gene_tpm", "gene_numreads", "transcript_tpm", "transcript_numreads"]
+from iwa_rnaseq_reporter.shared.matrix_kinds import VALID_MATRIX_KINDS
 
 @dataclass(frozen=True)
 class AnalysisConfig:
@@ -34,11 +31,3 @@ def validate_analysis_config(config: AnalysisConfig):
     
     if config.min_feature_mean < 0:
         raise ValueError(f"min_feature_mean must be >= 0, got {config.min_feature_mean}")
-
-
-def normalize_analysis_config(config: AnalysisConfig) -> AnalysisConfig:
-    """
-    Normalizes a configuration (e.g., ensuring correct types).
-    Currently returns the config as is, as the dataclass already provides basic structuring.
-    """
-    return config

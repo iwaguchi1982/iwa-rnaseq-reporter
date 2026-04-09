@@ -1,10 +1,9 @@
 import pytest
 from iwa_rnaseq_reporter.app.analysis_config import (
     AnalysisConfig, 
-    validate_analysis_config, 
-    normalize_analysis_config,
-    VALID_MATRIX_KINDS
+    validate_analysis_config
 )
+from iwa_rnaseq_reporter.shared.matrix_kinds import VALID_MATRIX_KINDS
 
 def test_analysis_config_creation():
     """
@@ -59,15 +58,6 @@ def test_validate_analysis_config_failure_min_mean():
     config = AnalysisConfig("gene_tpm", True, True, 2, -0.1)
     with pytest.raises(ValueError, match="min_feature_mean"):
         validate_analysis_config(config)
-
-
-def test_normalize_analysis_config():
-    """
-    Verify that normalization returns the config (basic contract check).
-    """
-    config = AnalysisConfig("gene_tpm", True, True, 2, 0.5)
-    normalized = normalize_analysis_config(config)
-    assert normalized == config
 
 
 def test_analysis_config_is_pure_dataclass():

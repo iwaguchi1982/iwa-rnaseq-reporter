@@ -2,14 +2,9 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from iwa_rnaseq_reporter.shared.matrix_kinds import VALID_MATRIX_KINDS
 
 
-VALID_MATRIX_KINDS = {
-    "gene_tpm",
-    "gene_numreads",
-    "transcript_tpm",
-    "transcript_numreads",
-}
 
 
 def get_matrix_by_kind(ds, matrix_kind: str) -> pd.DataFrame:
