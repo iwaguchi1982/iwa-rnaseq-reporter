@@ -382,6 +382,10 @@ if session_ctx and session_ctx.is_dataset_ready:
         step=0.1,
     )
 
+    # v0.14.2a: Initialize downstream-dependent states to stabilize failure paths
+    workspace: Optional[AnalysisWorkspaceContext] = None
+    deg_input_obj: Optional[Any] = None
+
     # v0.14.1: Consolidate analysis configuration
     analysis_config = AnalysisConfig(
         matrix_kind=matrix_kind,
@@ -642,13 +646,13 @@ if session_ctx and session_ctx.is_dataset_ready:
     # --------------------------------------------------
     st.header("12. Top Variable Features")
 
-    if analysis_matrix is not None:
+    if workspace is not None:
         top_n_stats = st.number_input("Show top N variable features", min_value=5, max_value=500, value=50, step=5)
         
         try:
-            top_stats_df = get_top_variable_features(analysis_matrix, top_n=int(top_n_stats))
+            top_stats_df = get_top_variable_features(workspace.analysis_matrix, top_n=int(top_n_stats))
             # Align with display_label contract
-            top_stats_df = add_display_labels(top_stats_df, ds.feature_annotation)
+            top_stats_df = add_display_labels(top_stats_df, workspace.dataset.feature_annotation)
             
             # Reorder for display
             pref_stats = ["display_label", "gene_symbol", "feature_id", "mean", "variance", "nonzero_samples", "max_value"]
@@ -665,17 +669,19 @@ if session_ctx and session_ctx.is_dataset_ready:
     # --------------------------------------------------
     st.header("13. DEG Comparison Design")
 
-    if analysis_matrix is not None:
+    if workspace is not None:
         st.info(
             f"Comparison design uses the current analysis matrix and included samples.  \n"
-            f"**Current Settings:** `{matrix_kind}` / `log2p1={log2p1}` / `use_exclude={use_exclude}` / "
-            f"`min_nonzero={min_feature_nonzero_samples}` / `min_mean={min_feature_mean}`"
+            f"**Current Settings:** `{workspace.matrix_kind}` / `log2p1={workspace.analysis_config.log2p1}` / "
+            f"`use_exclude={workspace.analysis_config.use_exclude}` / "
+            f"`min_nonzero={workspace.analysis_config.min_feature_nonzero_samples}` / "
+            f"`min_mean={workspace.analysis_config.min_feature_mean}`"
         )
 
         comparison_sample_table = build_analysis_sample_table(
-            ds,
-            matrix_kind=matrix_kind,
-            use_exclude=use_exclude,
+            workspace.dataset,
+            matrix_kind=workspace.matrix_kind,
+            use_exclude=workspace.analysis_config.use_exclude,
         )
 
         # In v0.1.4, candidate columns are explicitly derived from included samples
@@ -774,7 +780,7 @@ if session_ctx and session_ctx.is_dataset_ready:
         st.markdown(
             f"- **Comparison**: `{comparison_column}` (`{group_a}` vs `{group_b}`)\n"
             f"- **Samples**: {group_a} (`{len(deg_input_obj.group_a_samples)}`), {group_b} (`{len(deg_input_obj.group_b_samples)}`)\n"
-            f"- **Data**: `{matrix_kind}` (log2p1: `{log2p1}`, exclude: `{use_exclude}`, min_nonzero: `{min_feature_nonzero_samples}`, min_mean: `{min_feature_mean}`)"
+            f"- **Data**: `{workspace.matrix_kind}` (log2p1: `{workspace.analysis_config.log2p1}`, exclude: `{workspace.analysis_config.use_exclude}`, min_nonzero: `{workspace.analysis_config.min_feature_nonzero_samples}`, min_mean: `{workspace.analysis_config.min_feature_mean}`)"
         )
 
         if st.button("▶ Run DEG", type="primary"):
