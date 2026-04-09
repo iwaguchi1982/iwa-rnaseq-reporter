@@ -58,6 +58,7 @@ from iwa_rnaseq_reporter.app.reporter_session_context import ReporterSessionCont
 from iwa_rnaseq_reporter.app.entry_loader import load_reporter_entry_state
 from iwa_rnaseq_reporter.app.analysis_config import AnalysisConfig, validate_analysis_config
 from iwa_rnaseq_reporter.app.analysis_workspace_context import AnalysisWorkspaceContext
+from iwa_rnaseq_reporter.app.analysis_workspace_builder import build_analysis_workspace
 
 st.set_page_config(page_title="iwa-rnaseq-reporter", layout="wide")
 st.title("iwa-rnaseq-reporter")
@@ -397,42 +398,15 @@ if session_ctx and session_ctx.is_dataset_ready:
     validate_analysis_config(analysis_config)
 
     try:
-        analysis_sample_ids = get_analysis_sample_ids(
-            ds,
-            matrix_kind=analysis_config.matrix_kind,
-            use_exclude=analysis_config.use_exclude,
-        )
-
-        analysis_sample_table = build_analysis_sample_table(
-            ds,
-            matrix_kind=analysis_config.matrix_kind,
-            use_exclude=analysis_config.use_exclude,
-        )
+        # v0.14.3: Use builder for consolidated orchestration
+        workspace = build_analysis_workspace(ds, analysis_config)
 
         st.write(
-            f"**Selected analysis samples:** `{len(analysis_sample_ids)}` / "
-            f"`{len(get_matrix_by_kind(ds, analysis_config.matrix_kind).columns)}`"
+            f"**Selected analysis samples:** `{workspace.sample_count}` / "
+            f"`{len(get_matrix_by_kind(ds, workspace.matrix_kind).columns)}`"
         )
 
-        st.dataframe(format_display_df(analysis_sample_table), use_container_width=True)
-
-        analysis_matrix = build_analysis_matrix(
-            ds,
-            matrix_kind=analysis_config.matrix_kind,
-            log2p1=analysis_config.log2p1,
-            use_exclude=analysis_config.use_exclude,
-            min_feature_nonzero_samples=analysis_config.min_feature_nonzero_samples,
-            min_feature_mean=analysis_config.min_feature_mean,
-        )
-
-        # v0.14.2: Consolidate into AnalysisWorkspaceContext
-        workspace = AnalysisWorkspaceContext(
-            dataset=ds,
-            analysis_config=analysis_config,
-            analysis_sample_ids=analysis_sample_ids,
-            analysis_sample_table=analysis_sample_table,
-            analysis_matrix=analysis_matrix,
-        )
+        st.dataframe(format_display_df(workspace.analysis_sample_table), use_container_width=True)
 
         st.write(
             f"**Analysis matrix shape:** `{workspace.feature_count}` features × `{workspace.sample_count}` samples"
