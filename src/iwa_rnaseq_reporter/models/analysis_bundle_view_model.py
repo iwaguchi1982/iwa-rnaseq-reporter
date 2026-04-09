@@ -37,3 +37,14 @@ class ReporterAnalysisBundle:
     def __post_init__(self):
         # Basic validation/normalization if needed on the reporter side
         pass
+
+@dataclass(frozen=True)
+class BundleDiagnostic:
+    """
+    Diagnostic result for an Analysis Bundle ingestion.
+    """
+    status: str  # ok, warning, error, not_available
+    user_message: str
+    technical_message: Optional[str] = None
+    warning_flags: List[str] = field(default_factory=list)
+    manifest_path: Optional[str] = None

@@ -50,7 +50,7 @@ from iwa_rnaseq_reporter.legacy.deg_stats import (
 )
 import plotly.express as px
 from iwa_rnaseq_reporter.io.bundle_loader import load_reporter_analysis_bundle
-from iwa_rnaseq_reporter.models.analysis_bundle_view_model import ReporterAnalysisBundle
+from iwa_rnaseq_reporter.models.analysis_bundle_view_model import ReporterAnalysisBundle, BundleDiagnostic
 
 st.set_page_config(page_title="iwa-rnaseq-reporter", layout="wide")
 st.title("iwa-rnaseq-reporter")
@@ -114,21 +114,65 @@ def build_validation_df(ds) -> pd.DataFrame:
 
 
 def _try_load_bundle(input_path_str: str):
-    """Attempt to load analysis bundle and update session state."""
+    """Attempt to load analysis bundle and update session state with diagnostics."""
     try:
         bundle = load_reporter_analysis_bundle(input_path_str)
         st.session_state["analysis_bundle"] = bundle
-        st.session_state["analysis_bundle_load_error"] = None
+        
+        # Determine diagnostic status
+        warning_flags = []
+        if bundle.warning_summary:
+            warning_flags.append("Bundle has internal warnings.")
+        
+        alignment = bundle.sample_metadata_alignment_status
+        if alignment and not alignment.get("is_aligned", True):
+            warning_flags.append("Sample metadata may be misaligned.")
+            
+        if warning_flags:
+            diag = BundleDiagnostic(
+                status="warning",
+                user_message="Analysis Bundle loaded with warnings.",
+                technical_message=f"Warnings detected: {', '.join(warning_flags)}",
+                warning_flags=warning_flags,
+                manifest_path=input_path_str
+            )
+        else:
+            diag = BundleDiagnostic(
+                status="ok",
+                user_message="Analysis Bundle loaded successfully.",
+                manifest_path=input_path_str
+            )
+        st.session_state["analysis_bundle_diagnostic"] = diag
+        
     except Exception as e:
         st.session_state["analysis_bundle"] = None
-        st.session_state["analysis_bundle_load_error"] = str(e)
+        st.session_state["analysis_bundle_diagnostic"] = BundleDiagnostic(
+            status="error",
+            user_message="Analysis Bundle metadata is not available.",
+            technical_message=str(e),
+            manifest_path=input_path_str
+        )
 
 
 def _render_bundle_summary():
-    """Render analysis bundle summary in Section 8."""
-    if "analysis_bundle" in st.session_state and st.session_state["analysis_bundle"]:
-        bundle = st.session_state["analysis_bundle"]
-        st.info(f"**Analysis Bundle Detected:** `{bundle.matrix_id}` (Run: `{bundle.run_id}`)")
+    """Render analysis bundle summary and diagnostics in Section 8."""
+    if "analysis_bundle_diagnostic" not in st.session_state:
+        return
+
+    diag = st.session_state["analysis_bundle_diagnostic"]
+    
+    # 1. Status Banner
+    if diag.status == "ok":
+        st.success(diag.user_message)
+    elif diag.status == "warning":
+        st.warning(diag.user_message)
+    elif diag.status == "error":
+        st.info(f"💡 {diag.user_message} (Dataset-only mode continues)")
+    
+    # 2. Handoff Summary (if available)
+    bundle = st.session_state.get("analysis_bundle")
+    if bundle:
+        st.markdown(f"**Target:** `{bundle.matrix_id}` (Run: `{bundle.run_id}`)")
         
         c1, c2, c3 = st.columns(3)
         c1.metric("Run ID", bundle.run_id)
@@ -140,16 +184,20 @@ def _render_bundle_summary():
         s2.write(f"**ID System:** `{bundle.feature_id_system}`")
         s3.write(f"**Producer:** `{bundle.producer}` (v`{bundle.producer_version}`)")
         
-        with st.expander("Bundle Status & Warnings", expanded=False):
+        # 3. Details Expander
+        with st.expander("Technical Bundle Details", expanded=False):
             st.write("**Feature Annotation:**", bundle.feature_annotation_status if bundle.feature_annotation_status else "Not attached")
             st.write("**Sample Metadata Alignment:**", bundle.sample_metadata_alignment_status if bundle.sample_metadata_alignment_status else "Not verified")
+            if diag.warning_flags:
+                st.warning(f"**Diagnostic Warnings:** {', '.join(diag.warning_flags)}")
             if bundle.warning_summary:
-                st.warning(f"**Bundle Warnings:** {bundle.warning_summary}")
+                st.code(bundle.warning_summary, language="json")
             st.caption(f"Manifest Path: {bundle.analysis_bundle_manifest_path}")
-
-    elif "analysis_bundle_load_error" in st.session_state and st.session_state["analysis_bundle_load_error"]:
-        st.warning(f"⚠️ **Analysis Bundle not available:** {st.session_state['analysis_bundle_load_error']}")
-        st.caption("Standard dataset loading was successful, but advanced bundle metadata could not be retrieved.")
+    
+    elif diag.status == "error":
+        with st.expander("Diagnostic Error Details", expanded=False):
+            st.write(f"**Error:** {diag.technical_message}")
+            st.caption(f"Attempted Path: {diag.manifest_path}")
 
 
 # --------------------------------------------------
