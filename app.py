@@ -49,6 +49,8 @@ from iwa_rnaseq_reporter.legacy.deg_stats import (
     compute_statistical_deg,
 )
 import plotly.express as px
+from iwa_rnaseq_reporter.io.bundle_loader import load_reporter_analysis_bundle
+from iwa_rnaseq_reporter.models.analysis_bundle_view_model import ReporterAnalysisBundle
 
 st.set_page_config(page_title="iwa-rnaseq-reporter", layout="wide")
 st.title("iwa-rnaseq-reporter")
@@ -111,6 +113,45 @@ def build_validation_df(ds) -> pd.DataFrame:
     )
 
 
+def _try_load_bundle(input_path_str: str):
+    """Attempt to load analysis bundle and update session state."""
+    try:
+        bundle = load_reporter_analysis_bundle(input_path_str)
+        st.session_state["analysis_bundle"] = bundle
+        st.session_state["analysis_bundle_load_error"] = None
+    except Exception as e:
+        st.session_state["analysis_bundle"] = None
+        st.session_state["analysis_bundle_load_error"] = str(e)
+
+
+def _render_bundle_summary():
+    """Render analysis bundle summary in Section 8."""
+    if "analysis_bundle" in st.session_state and st.session_state["analysis_bundle"]:
+        bundle = st.session_state["analysis_bundle"]
+        st.info(f"**Analysis Bundle Detected:** `{bundle.matrix_id}` (Run: `{bundle.run_id}`)")
+        
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Run ID", bundle.run_id)
+        c2.metric("Matrix ID", bundle.matrix_id)
+        c3.metric("Sample Axis", bundle.sample_axis)
+        
+        s1, s2, s3 = st.columns(3)
+        s1.write(f"**Shape:** `{bundle.matrix_shape['feature_count']}` features × `{bundle.matrix_shape['sample_count']}` samples")
+        s2.write(f"**ID System:** `{bundle.feature_id_system}`")
+        s3.write(f"**Producer:** `{bundle.producer}` (v`{bundle.producer_version}`)")
+        
+        with st.expander("Bundle Status & Warnings", expanded=False):
+            st.write("**Feature Annotation:**", bundle.feature_annotation_status if bundle.feature_annotation_status else "Not attached")
+            st.write("**Sample Metadata Alignment:**", bundle.sample_metadata_alignment_status if bundle.sample_metadata_alignment_status else "Not verified")
+            if bundle.warning_summary:
+                st.warning(f"**Bundle Warnings:** {bundle.warning_summary}")
+            st.caption(f"Manifest Path: {bundle.analysis_bundle_manifest_path}")
+
+    elif "analysis_bundle_load_error" in st.session_state and st.session_state["analysis_bundle_load_error"]:
+        st.warning(f"⚠️ **Analysis Bundle not available:** {st.session_state['analysis_bundle_load_error']}")
+        st.caption("Standard dataset loading was successful, but advanced bundle metadata could not be retrieved.")
+
+
 # --------------------------------------------------
 # 1. Input
 # --------------------------------------------------
@@ -129,6 +170,8 @@ if st.button("Load Dataset"):
             ds = load_reporter_dataset(input_path)
             st.session_state["dataset"] = ds
             st.success("Successfully loaded dataset!")
+            # v0.12.3: Attempt to load bundle
+            _try_load_bundle(input_path_str)
         except ReporterLoadError as e:
             st.error("Failed to load dataset.")
             for msg in e.messages:
@@ -256,6 +299,9 @@ if "dataset" in st.session_state:
     # 8. Analysis Setup
     # --------------------------------------------------
     st.header("8. Analysis Setup")
+    
+    # v0.12.3: Show bundle summary
+    _render_bundle_summary()
 
     available_matrix_options = ["gene_tpm", "gene_numreads"]
     if ds.transcript_tpm is not None:
