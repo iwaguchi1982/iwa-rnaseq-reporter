@@ -41,7 +41,6 @@ from iwa_rnaseq_reporter.legacy.deg_stats import (
     compute_statistical_deg,
 )
 import plotly.express as px
-from iwa_rnaseq_reporter.io.bundle_loader import load_reporter_analysis_bundle
 from iwa_rnaseq_reporter.models.analysis_bundle_view_model import ReporterAnalysisBundle, BundleDiagnostic
 from iwa_rnaseq_reporter.io.input_resolution import resolve_reporter_input_paths
 from iwa_rnaseq_reporter.app.resolved_input_context import ResolvedInputContext

@@ -1,9 +1,18 @@
 from typing import Any, Dict, List, Optional
-from iwa_rnaseq_counter.io.read_analysis_bundle import (
-    read_analysis_bundle,
-    summarize_analysis_bundle_for_consumer
-)
 from iwa_rnaseq_reporter.models.analysis_bundle_view_model import ReporterAnalysisBundle
+
+# Deferred imports to avoid hard dependency on the counter package at startup.
+# This allows the reporter to start even if the counter is not installed.
+try:
+    from iwa_rnaseq_counter.io.read_analysis_bundle import (
+        read_analysis_bundle,
+        summarize_analysis_bundle_for_consumer
+    )
+except ImportError:
+    # Stubs for environments without the counter package.
+    # We define them as None so that unittest.mock.patch can still target these names.
+    read_analysis_bundle = None
+    summarize_analysis_bundle_for_consumer = None
 
 def load_reporter_analysis_bundle(manifest_path: str) -> ReporterAnalysisBundle:
     """
@@ -17,26 +26,27 @@ def load_reporter_analysis_bundle(manifest_path: str) -> ReporterAnalysisBundle:
         
     Raises:
         ValueError: If manifest_path is empty or whitespace.
-        RuntimeError: If the bundle cannot be loaded or summarized.
+        RuntimeError: If the counter package is missing or the bundle cannot be loaded.
     """
     if not manifest_path or not manifest_path.strip():
         raise ValueError("manifest_path cannot be empty or whitespace only.")
+
+    if read_analysis_bundle is None or summarize_analysis_bundle_for_consumer is None:
+        raise RuntimeError(
+            "The 'iwa-rnaseq-counter' package is required to load analysis bundles, "
+            "but it is not installed in the current environment."
+        )
 
     try:
         # Load the bundle using the Counter's public API
         bundle = read_analysis_bundle(manifest_path)
         
         # Summarize the bundle using the Counter's public summary helper
-        # This summary is the source of truth for the Reporter Handoff Profile.
         summary = summarize_analysis_bundle_for_consumer(bundle)
         
-        # Instantiate the Reporter-side view model
-        # We use unpacking here because the keys in summarize_analysis_bundle_for_consumer
-        # are intentionally aligned with the ReporterAnalysisBundle dataclass.
         return ReporterAnalysisBundle(**summary)
         
     except Exception as e:
-        # Wrap the original exception to provide context for the reporter
         raise RuntimeError(
             f"Failed to load reporter analysis bundle from manifest: {manifest_path}"
         ) from e
