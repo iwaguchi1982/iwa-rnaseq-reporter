@@ -2,7 +2,8 @@ import pytest
 from iwa_rnaseq_reporter.app.analysis_config import (
     AnalysisConfig, 
     validate_analysis_config, 
-    normalize_analysis_config
+    normalize_analysis_config,
+    VALID_MATRIX_KINDS
 )
 
 def test_analysis_config_creation():
@@ -28,8 +29,18 @@ def test_validate_analysis_config_success():
     """
     Verify that valid configurations pass the validation check.
     """
-    config = AnalysisConfig("gene_tpm", True, True, 0, 0.0)
-    validate_analysis_config(config)  # Should not raise
+    for kind in VALID_MATRIX_KINDS:
+        config = AnalysisConfig(kind, True, True, 0, 0.0)
+        validate_analysis_config(config)
+
+
+def test_validate_analysis_config_failure_invalid_kind():
+    """
+    Verify that unsupported matrix_kind raises ValueError.
+    """
+    config = AnalysisConfig("invalid_kind", True, True, 1, 0.0)
+    with pytest.raises(ValueError, match="Invalid matrix_kind"):
+        validate_analysis_config(config)
 
 
 def test_validate_analysis_config_failure_nonzero_samples():
@@ -63,7 +74,7 @@ def test_analysis_config_is_pure_dataclass():
     """
     Verify that the config does not have external dependencies or complex state.
     """
-    config = AnalysisConfig("kind", False, False, 1, 1.0)
+    config = AnalysisConfig("gene_tpm", False, False, 1, 1.0)
     # Check that it is indeed a dataclass and has expected fields
     from dataclasses import is_dataclass
     assert is_dataclass(config)

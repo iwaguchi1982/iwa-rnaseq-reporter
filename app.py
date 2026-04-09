@@ -56,6 +56,7 @@ from iwa_rnaseq_reporter.io.input_resolution import resolve_reporter_input_paths
 from iwa_rnaseq_reporter.app.resolved_input_context import ResolvedInputContext
 from iwa_rnaseq_reporter.app.reporter_session_context import ReporterSessionContext
 from iwa_rnaseq_reporter.app.entry_loader import load_reporter_entry_state
+from iwa_rnaseq_reporter.app.analysis_config import AnalysisConfig, validate_analysis_config
 
 st.set_page_config(page_title="iwa-rnaseq-reporter", layout="wide")
 st.title("iwa-rnaseq-reporter")
@@ -380,33 +381,43 @@ if session_ctx and session_ctx.is_dataset_ready:
         step=0.1,
     )
 
+    # v0.14.1: Consolidate analysis configuration
+    analysis_config = AnalysisConfig(
+        matrix_kind=matrix_kind,
+        log2p1=log2p1,
+        use_exclude=use_exclude,
+        min_feature_nonzero_samples=int(min_feature_nonzero_samples),
+        min_feature_mean=float(min_feature_mean),
+    )
+    validate_analysis_config(analysis_config)
+
     try:
         analysis_sample_ids = get_analysis_sample_ids(
             ds,
-            matrix_kind=matrix_kind,
-            use_exclude=use_exclude,
+            matrix_kind=analysis_config.matrix_kind,
+            use_exclude=analysis_config.use_exclude,
         )
 
         analysis_sample_table = build_analysis_sample_table(
             ds,
-            matrix_kind=matrix_kind,
-            use_exclude=use_exclude,
+            matrix_kind=analysis_config.matrix_kind,
+            use_exclude=analysis_config.use_exclude,
         )
 
         st.write(
             f"**Selected analysis samples:** `{len(analysis_sample_ids)}` / "
-            f"`{len(get_matrix_by_kind(ds, matrix_kind).columns)}`"
+            f"`{len(get_matrix_by_kind(ds, analysis_config.matrix_kind).columns)}`"
         )
 
         st.dataframe(format_display_df(analysis_sample_table), use_container_width=True)
 
         analysis_matrix = build_analysis_matrix(
             ds,
-            matrix_kind=matrix_kind,
-            log2p1=log2p1,
-            use_exclude=use_exclude,
-            min_feature_nonzero_samples=int(min_feature_nonzero_samples),
-            min_feature_mean=float(min_feature_mean),
+            matrix_kind=analysis_config.matrix_kind,
+            log2p1=analysis_config.log2p1,
+            use_exclude=analysis_config.use_exclude,
+            min_feature_nonzero_samples=analysis_config.min_feature_nonzero_samples,
+            min_feature_mean=analysis_config.min_feature_mean,
         )
 
         st.write(
@@ -414,11 +425,11 @@ if session_ctx and session_ctx.is_dataset_ready:
         )
 
         with st.expander("Analysis Matrix Filtering Summary", expanded=False):
-            st.write(f"- matrix_kind: `{matrix_kind}`")
-            st.write(f"- log2p1: `{log2p1}`")
-            st.write(f"- use_exclude: `{use_exclude}`")
-            st.write(f"- min_feature_nonzero_samples: `{min_feature_nonzero_samples}`")
-            st.write(f"- min_feature_mean: `{min_feature_mean}`")
+            st.write(f"- matrix_kind: `{analysis_config.matrix_kind}`")
+            st.write(f"- log2p1: `{analysis_config.log2p1}`")
+            st.write(f"- use_exclude: `{analysis_config.use_exclude}`")
+            st.write(f"- min_feature_nonzero_samples: `{analysis_config.min_feature_nonzero_samples}`")
+            st.write(f"- min_feature_mean: `{analysis_config.min_feature_mean}`")
 
         with st.expander("Analysis Matrix Preview", expanded=False):
             # Show labeled preview for wet-first usability

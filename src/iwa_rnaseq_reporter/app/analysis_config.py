@@ -1,4 +1,8 @@
 from dataclasses import dataclass
+from typing import List
+
+# Standard matrix kinds supported by the application
+VALID_MATRIX_KINDS = ["gene_tpm", "gene_numreads", "transcript_tpm", "transcript_numreads"]
 
 @dataclass(frozen=True)
 class AnalysisConfig:
@@ -15,10 +19,18 @@ class AnalysisConfig:
 
 def validate_analysis_config(config: AnalysisConfig):
     """
-    Validates that the analysis configuration has valid ranges.
+    Validates that the analysis configuration has valid ranges and values.
     """
+    if config.matrix_kind not in VALID_MATRIX_KINDS:
+        raise ValueError(
+            f"Invalid matrix_kind: {config.matrix_kind}. "
+            f"Must be one of {VALID_MATRIX_KINDS}"
+        )
+
     if config.min_feature_nonzero_samples < 0:
-        raise ValueError(f"min_feature_nonzero_samples must be >= 0, got {config.min_feature_nonzero_samples}")
+        raise ValueError(
+            f"min_feature_nonzero_samples must be >= 0, got {config.min_feature_nonzero_samples}"
+        )
     
     if config.min_feature_mean < 0:
         raise ValueError(f"min_feature_mean must be >= 0, got {config.min_feature_mean}")
@@ -29,6 +41,4 @@ def normalize_analysis_config(config: AnalysisConfig) -> AnalysisConfig:
     Normalizes a configuration (e.g., ensuring correct types).
     Currently returns the config as is, as the dataclass already provides basic structuring.
     """
-    # Type normalization is naturally handled if we create new instance via helper, 
-    # but here we just return it to fulfill the contract.
     return config
