@@ -10,7 +10,6 @@ sys.path.append(str(Path(__file__).parent / "src"))
 from iwa_rnaseq_reporter.legacy.loader import load_reporter_dataset, ReporterLoadError
 from iwa_rnaseq_reporter.legacy.analysis import (
     get_matrix_by_kind,
-    build_analysis_sample_table,
 )
 from iwa_rnaseq_reporter.legacy.pca_utils import (
     run_pca,
@@ -374,6 +373,9 @@ if session_ctx and session_ctx.is_dataset_ready:
     # v0.14.2a: Initialize downstream-dependent states to stabilize failure paths
     workspace: Optional[AnalysisWorkspaceContext] = None
     deg_input_obj: Optional[Any] = None
+    comparison_column: Optional[str] = None
+    group_a: Optional[str] = None
+    group_b: Optional[str] = None
 
     # v0.14.1: Consolidate analysis configuration
     analysis_config = AnalysisConfig(
