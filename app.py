@@ -53,6 +53,7 @@ from iwa_rnaseq_reporter.io.bundle_loader import load_reporter_analysis_bundle
 from iwa_rnaseq_reporter.models.analysis_bundle_view_model import ReporterAnalysisBundle, BundleDiagnostic
 from iwa_rnaseq_reporter.io.input_resolution import resolve_reporter_input_paths
 from iwa_rnaseq_reporter.app.resolved_input_context import ResolvedInputContext
+from iwa_rnaseq_reporter.app.reporter_session_context import ReporterSessionContext
 
 st.set_page_config(page_title="iwa-rnaseq-reporter", layout="wide")
 st.title("iwa-rnaseq-reporter")
@@ -115,11 +116,10 @@ def build_validation_df(ds) -> pd.DataFrame:
     )
 
 
-def _try_load_bundle(input_path_str: str):
-    """Attempt to load analysis bundle and update session state with diagnostics."""
+def _try_load_bundle(input_path_str: str) -> tuple[Optional[ReporterAnalysisBundle], Optional[BundleDiagnostic]]:
+    """Attempt to load analysis bundle and return result with diagnostics."""
     try:
         bundle = load_reporter_analysis_bundle(input_path_str)
-        st.session_state["analysis_bundle"] = bundle
         
         # Determine diagnostic status
         warning_flags = []
@@ -144,11 +144,10 @@ def _try_load_bundle(input_path_str: str):
                 user_message="Analysis Bundle loaded successfully.",
                 manifest_path=input_path_str
             )
-        st.session_state["analysis_bundle_diagnostic"] = diag
+        return bundle, diag
         
     except Exception as e:
-        st.session_state["analysis_bundle"] = None
-        st.session_state["analysis_bundle_diagnostic"] = BundleDiagnostic(
+        return None, BundleDiagnostic(
             status="error",
             user_message="Analysis Bundle metadata is not available.",
             technical_message=str(e),
@@ -156,12 +155,12 @@ def _try_load_bundle(input_path_str: str):
         )
 
 
-def _render_bundle_summary():
+def _render_bundle_summary(session_ctx: Optional[ReporterSessionContext]):
     """Render analysis bundle summary and diagnostics in Section 8."""
-    if "analysis_bundle_diagnostic" not in st.session_state:
+    if not session_ctx or not session_ctx.has_bundle_diagnostic:
         return
 
-    diag = st.session_state["analysis_bundle_diagnostic"]
+    diag = session_ctx.analysis_bundle_diagnostic
     
     # 1. Status Banner
     if diag.status == "ok":
@@ -172,7 +171,7 @@ def _render_bundle_summary():
         st.info(f"💡 {diag.user_message} (Dataset-only mode continues)")
     
     # 2. Handoff Summary (if available)
-    bundle = st.session_state.get("analysis_bundle")
+    bundle = session_ctx.analysis_bundle
     if bundle:
         st.markdown(f"**Target:** `{bundle.matrix_id}` (Run: `{bundle.run_id}`)")
         
@@ -217,30 +216,46 @@ if st.button("Load Dataset"):
     else:
         # v0.13.1/2: Normalize input resolution and context
         resolution = resolve_reporter_input_paths(input_path_str)
-        context = ResolvedInputContext.from_resolution_result(resolution)
-        st.session_state["resolved_input_context"] = context
+        res_ctx = ResolvedInputContext.from_resolution_result(resolution)
         
-        if context.is_unresolved:
+        if res_ctx.is_unresolved:
             st.error("Failed to resolve input path.")
-            for msg in context.resolution_messages:
+            for msg in res_ctx.resolution_messages:
                 st.info(msg)
+            # Reset context on failure
+            st.session_state["reporter_session_context"] = ReporterSessionContext(resolved_input_context=res_ctx)
         else:
             try:
+                ds = None
+                bundle = None
+                diag = None
+
                 # Load dataset if resolved
-                if context.has_dataset_manifest:
-                    ds = load_reporter_dataset(context.resolved_dataset_manifest_path)
-                    st.session_state["dataset"] = ds
+                if res_ctx.has_dataset_manifest:
+                    ds = load_reporter_dataset(res_ctx.resolved_dataset_manifest_path)
                 else:
                     st.warning("Dataset manifest not resolved; entering bundle-only mode (partial support).")
                 
                 # Load bundle if resolved
-                if context.has_bundle_manifest:
-                    _try_load_bundle(context.resolved_bundle_manifest_path)
-                else:
-                    st.session_state["analysis_bundle"] = None
-                    st.session_state["analysis_bundle_diagnostic"] = None
+                if res_ctx.has_bundle_manifest:
+                    bundle, diag = _try_load_bundle(res_ctx.resolved_bundle_manifest_path)
+                
+                # v0.13.3: Build and store session context
+                session_ctx = ReporterSessionContext.from_parts(
+                    resolved_input_context=res_ctx,
+                    dataset=ds,
+                    analysis_bundle=bundle,
+                    analysis_bundle_diagnostic=diag
+                )
+                st.session_state["reporter_session_context"] = session_ctx
+
+                # Keep legacy keys for downstream compatibility
+                st.session_state["resolved_input_context"] = res_ctx
+                st.session_state["dataset"] = ds
+                st.session_state["analysis_bundle"] = bundle
+                st.session_state["analysis_bundle_diagnostic"] = diag
                     
-                st.success(f"Input resolved as {context.input_kind} ({context.load_mode})")
+                st.success(f"Input resolved as {res_ctx.input_kind} ({res_ctx.load_mode})")
                 
             except ReporterLoadError as e:
                 st.error("Failed to load dataset.")
@@ -254,18 +269,20 @@ if st.button("Load Dataset"):
             except Exception as e:
                 st.exception(e)
 
-if "resolved_input_context" in st.session_state:
-    ctx = st.session_state["resolved_input_context"]
+session_ctx = st.session_state.get("reporter_session_context")
+
+if session_ctx and session_ctx.has_resolved_input:
+    res_ctx = session_ctx.resolved_input_context
     with st.expander("Input Resolution Details", expanded=False):
-        st.write(f"**Input Kind:** `{ctx.input_kind}`")
-        st.write(f"**Load Mode:** `{ctx.load_mode}`")
-        st.write(f"**Resolved Dataset:** `{ctx.resolved_dataset_manifest_path}`")
-        st.write(f"**Resolved Bundle:** `{ctx.resolved_bundle_manifest_path}`")
-        for msg in ctx.resolution_messages:
+        st.write(f"**Input Kind:** `{res_ctx.input_kind}`")
+        st.write(f"**Load Mode:** `{res_ctx.load_mode}`")
+        st.write(f"**Resolved Dataset:** `{res_ctx.resolved_dataset_manifest_path}`")
+        st.write(f"**Resolved Bundle:** `{res_ctx.resolved_bundle_manifest_path}`")
+        for msg in res_ctx.resolution_messages:
             st.caption(f"- {msg}")
 
-if "dataset" in st.session_state:
-    ds = st.session_state["dataset"]
+if session_ctx and session_ctx.is_dataset_ready:
+    ds = session_ctx.dataset
 
     # --------------------------------------------------
     # 2. Load Status
@@ -381,7 +398,7 @@ if "dataset" in st.session_state:
     st.header("8. Analysis Setup")
     
     # v0.12.3: Show bundle summary
-    _render_bundle_summary()
+    _render_bundle_summary(session_ctx)
 
     available_matrix_options = ["gene_tpm", "gene_numreads"]
     if ds.transcript_tpm is not None:
