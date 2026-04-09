@@ -1,6 +1,6 @@
-# 実装指示書: iwa-rnaseq-reporter v0.13.3
+# 実装指示書: iwa-rnaseq-reporter v0.13.4
 ## タスク名
-Reporter Session Context の導入
+app.py 入口ロジックの薄化
 
 ## 対象 repo
 iwa-rnaseq-reporter
@@ -12,303 +12,285 @@ dev-v0.13
 
 ## 0. このタスクの目的
 
-v0.13.3 の目的は、v0.13.1 と v0.13.2 で整えた入口状態を、
-app.py 内の散在した `st.session_state` キーの寄せ集めとしてではなく、
-**意味のある軽い Reporter Session Context** として扱えるようにすることです。
+v0.13.4 の目的は、現在 app.py の Input セクション周辺に残っている入口責務を、
+**小さな helper / builder に寄せて、app.py を「処理する場所」から「読む場所」へ一段進めること**です。
 
-このタスクで整理対象にするのは、最低限以下です。
+今回の対象は、最低限以下です。
 
-- resolved_input_context
-- dataset
-- analysis_bundle
-- analysis_bundle_diagnostic
+- input 文字列の受け取り後の入口フロー
+- path 解決
+- dataset load
+- bundle ingest
+- bundle diagnostic
+- ReporterSessionContext 構築
+- session_state への反映
 
 重要:
-- これは **Reporter 全体の巨大 state manager** を作るタスクではありません
-- これは **Input セクション周辺の入口状態を整えるタスク** です
-- PCA / Correlation / Gene Search / DEG などの downstream 機能は触りません
-- app.py の全面改造はしません
+- app.py 全面改造はしない
+- PCA / Correlation / Gene Search / DEG には広げない
+- loader / bundle_loader の本体責務は大きく変えない
+- 巨大 controller / service 層は作らない
 
 ---
 
 ## 1. 今回やること
 
-### 1-1. ReporterSessionContext を追加する
+### 1-1. 入口処理を 1 本の helper に寄せる
 
-新規に、入口状態を束ねる軽い dataclass を追加してください。
+Input セクションで現在段階的に行っている入口処理を、
+**1 つの小さな orchestration helper** に寄せてください。
 
-推奨名:
-- `ReporterSessionContext`
+候補名:
+- `load_reporter_entry_state(...)`
+- `build_reporter_entry_state(...)`
+- `run_reporter_entry_load(...)`
 
-推奨配置:
-- `src/iwa_rnaseq_reporter/app/reporter_session_context.py`
+配置候補:
+- `src/iwa_rnaseq_reporter/app/entry_loader.py`
+- `src/iwa_rnaseq_reporter/app/entry_flow.py`
 
-最低限持たせる項目:
+責務:
+- user input string を受け取る
+- path 解決を行う
+- resolved input context を作る
+- dataset load を試みる
+- bundle ingest を試みる
+- diagnostic を整える
+- ReporterSessionContext を返す
 
-- `resolved_input_context: ResolvedInputContext | None`
-- `dataset: object | None`
-- `analysis_bundle: ReporterAnalysisBundle | None`
-- `analysis_bundle_diagnostic: BundleDiagnostic | None`
+返り値は、最低限以下のどちらかにしてください。
 
-型は repo の既存構造に合わせて具体化してよいですが、
-**今回の context は app が入口状態を読むための薄い構造** に留めてください。
+#### パターンA
+`ReporterSessionContext` を返す
 
-必要なら以下のような便利 property を追加してよいです。
+#### パターンB
+`ReporterSessionContext` と、補助的な UI 用情報を返す
 
-- `has_resolved_input`
-- `has_dataset`
-- `has_analysis_bundle`
-- `has_bundle_diagnostic`
-- `is_dataset_ready`
-- `is_bundle_ready`
-- `is_dataset_only_mode`
-- `is_bundle_warning`
-- `is_bundle_error`
-
-ただし、便利 property は増やしすぎないこと。
+ただし、**UI 表示用の雑多な dict を大量に返さないこと**。
 
 ---
 
-### 1-2. context 生成 / 更新 helper を追加する
+### 1-2. app.py では helper 呼び出しと描画に寄せる
 
-以下のどちらかの方向で、pure な builder / updater を追加してください。
+`Load Dataset` ボタン押下後の app.py の役割を、最低限以下へ絞ってください。
 
-候補:
-- `build_reporter_session_context(...)`
-- `ReporterSessionContext.from_parts(...)`
-- `update_reporter_session_context(...)`
+- 空入力チェック
+- helper 呼び出し
+- session_state 保存
+- success / error 表示
+- context を使った描画
 
-推奨責務:
+重要:
+- app.py 側で path 解決ロジックを再実装しない
+- app.py 側で context 組み立てを再実装しない
+- app.py 側で bundle diagnostic 判定ロジックを増殖させない
+
+---
+
+### 1-3. session_state 更新を 1 箇所に寄せる
+
+現在の入口処理で更新している session key 群が分散している場合、
+それを **1 つの helper** に寄せてください。
+
+候補名:
+- `apply_reporter_session_context(...)`
+- `sync_reporter_session_state(...)`
+
+最低限同期対象:
+- `reporter_session_context`
 - `resolved_input_context`
 - `dataset`
 - `analysis_bundle`
 - `analysis_bundle_diagnostic`
 
-を受け取り、`ReporterSessionContext` を返す。
-
 重要:
-- context 内で dataset load を実行しない
-- context 内で bundle ingest を実行しない
-- context は状態を表す object であり、処理本体は持たない
-- Streamlit に直接依存しない pure 実装にする
+- downstream 互換のため既存 key は維持してよい
+- ただし更新起点は 1 箇所へ寄せること
+- stale state を起こしにくい更新順序にすること
 
 ---
 
-### 1-3. app.py の入口 state を ReporterSessionContext に寄せる
+### 1-4. Input セクションの責務を減らす
 
-`Load Dataset` 実行時の入口フローを、最低限以下の流れへ寄せてください。
+最終的に app.py の Input セクションが、概ね以下のような責務になる状態を目指してください。
 
-1. user input を受け取る
-2. `resolve_reporter_input_paths(...)` を呼ぶ
-3. `ResolvedInputContext` を作る
-4. dataset load を試みる
-5. bundle ingest を試みる
-6. 上記結果から `ReporterSessionContext` を作る
-7. `st.session_state["reporter_session_context"]` に保存する
+- 入力受け取り
+- ボタン押下判定
+- 空入力時のエラー表示
+- 入口 helper 呼び出し
+- context の保存
+- 最小限の通知表示
 
-重要:
-- 今回の段では、既存の
-  - `dataset`
-  - `analysis_bundle`
-  - `analysis_bundle_diagnostic`
-  - `resolved_input_context`
-  を即完全廃止してもよいとは限りません
-- downstream 互換性を保つため、必要であれば既存キーも並行保持してかまいません
-- ただし **app.py の表示や分岐は、できるだけ `reporter_session_context` を読む形へ寄せる** こと
+つまり、Input セクション内に
 
----
+- path 判定分岐
+- dataset load 分岐
+- bundle ingest 分岐
+- diagnostic 組み立て分岐
+- session key ごとの細かい更新
 
-### 1-4. Input / Load 周辺 UI を session context 起点に整理する
-
-現在 app.py にある入口表示や初期 summary があれば、
-それを ad-hoc な session key 群ではなく、
-**`reporter_session_context` を読む形** へ少し寄せてください。
-
-今回の対象はあくまで入口周辺です。
-
-最低限整理したい対象:
-- Input Resolution Details
-- Load 成否に関わる入口状態表示
-- bundle summary / diagnostic の参照起点
-
-ここでのゴールは UI 改修ではなく、
-**表示が context を source of truth として読めること** です。
+が散らばらないようにしてください。
 
 ---
 
 ## 2. 今回やらないこと
 
-このタスクでは以下は禁止です。
+以下は禁止です。
 
-- app.py の全面再設計
-- PCA / Correlation / Gene Search / DEG の state 管理変更
-- session manager / controller の大型導入
-- dataset loader / bundle loader の本体再設計
-- Counter 側 contract の変更
-- bundle ingest の責務再分離の大改造
-- Section 8 以降の機能追加
+- app.py 全体の分割
+- Section 8 以降の機能単位の再設計
+- PCA / DEG など downstream state の再編
+- loader / bundle_loader / legacy 層の全面改修
+- ReporterSessionContext の巨大化
+- ResultSpec / ReportPayloadSpec など schema 層の追加実装
 - multi-use-case 展開
-- telemetry / monitoring の導入
+- telemetry / logging framework の導入
 
 ---
 
 ## 3. 設計方針
 
-### 3-1. context は「入口状態の束ね」に限定する
-この context は、
-Reporter 全体の万能 state object ではなく、
-**入口で今何が解決され、何が読み込まれ、bundle consume がどう見えているか**
-をまとめるためのものです。
+### 3-1. 入口 orchestration は薄く保つ
+helper を作っても、それが巨大 service になっては意味がありません。
+今回の helper は **入口処理をまとめるだけの薄い orchestration** に留めてください。
 
-### 3-2. dataset / bundle / diagnostic の責務は混ぜない
-context は束ねるだけで、意味は分離したままにしてください。
+### 3-2. pure な処理と Streamlit 依存処理を分ける
+可能な限り、
 
-- resolved_input_context = 入口 metadata
+- pure な入口処理
+- session_state 反映
+- UI 表示
+
+を分けてください。
+
+理想:
+- pure helper が ReporterSessionContext を返す
+- Streamlit 側はそれを保存・表示するだけ
+
+### 3-3. 既存責務を壊さない
+- input resolution = path 解決
+- resolved input context = 入口 metadata
 - dataset = 解析実体
-- analysis_bundle = handoff metadata
-- analysis_bundle_diagnostic = consume 視点の状態
+- analysis bundle = handoff metadata
+- diagnostic = consume 視点の状態
+- reporter session context = それらを束ねる薄い view
 
-### 3-3. pure dataclass を優先する
-session に保存する先は Streamlit でよいですが、
-context 本体は pure な dataclass としてください。
+この責務分離は維持してください。
 
-### 3-4. app.py は context を読む側へ寄せる
-今回の主眼は、
-`st.session_state["dataset"]` などを散発的に直読む構造から、
-入口周辺だけでも `reporter_session_context` 起点に揃えることです。
-
-### 3-5. v0.13.4 を先食いしすぎない
-app.py の薄化は次段でも行います。
-今回は **context 導入で自然になる範囲まで** に留めてください。
+### 3-4. 既存 session key は互換性優先
+downstream がまだ `dataset` などを直接参照しているはずなので、
+今回の段では `reporter_session_context` を source of truth に寄せつつも、
+既存 key の互換性は維持してください。
 
 ---
 
 ## 4. 実装の具体要件
 
-### 4-1. dataclass を優先
-`ReporterSessionContext` は dataclass を優先してください。
+### 4-1. helper の入力は単純にする
+入口 orchestration helper の入力は、まずは
 
-### 4-2. None を明示的に扱える構造にする
-以下のような partial state を自然に持てるようにしてください。
+- `input_path_str: str`
 
-例:
-- resolved input はあるが dataset は未 load
-- dataset はあるが bundle はない
-- bundle はあるが diagnostic は warning
-- dataset load failed だが resolved input は残る
+程度で十分です。
 
-### 4-3. helper / property は最小限
-便利 property を追加してもよいですが、
-責務の説明を超えてロジックを持ちすぎないこと。
+必要なら内部で
+- resolver
+- dataset loader
+- bundle loader
+- diagnostic builder
 
-### 4-4. context を dict の寄せ集めにしない
-明示的なフィールドを持つ dataclass にしてください。
-将来の v0.13.4 以降で読みやすさを保つためです。
+を呼んでください。
 
-### 4-5. 既存 state との互換性を壊しすぎない
-downstream 側がまだ `dataset` 直参照をしているはずなので、
-この段階では互換性維持を優先してください。
+### 4-2. helper の出力は ReporterSessionContext 中心
+返り値はできるだけ `ReporterSessionContext` を中心にしてください。
+複数の雑多な値を返す形は避けてください。
+
+### 4-3. 失敗ケースを context で表現できるようにする
+以下のケースを自然に扱えること。
+
+- 入力は解決されたが dataset load に失敗
+- dataset は load できたが bundle 失敗
+- bundle は warning
+- 未解決入力
+
+### 4-4. success / failure 表示ルールは現状踏襲
+今回の目的は UI 文言の刷新ではありません。
+st.success / st.error / st.info などの使い方は、なるべく現状流儀を保ってください。
+
+### 4-5. stale state を悪化させない
+新しい load 試行時に、
+前回の dataset / bundle / diagnostic が不自然に残ることを避けてください。
 
 ---
 
 ## 5. app.py への反映方針
 
-### 5-1. Load Dataset の主フロー
-最低限、以下の情報を 1 回の load 試行ごとに context 化してください。
+### 5-1. Load Dataset ボタン押下時
+以下のような主フローへ寄せてください。
 
-- 解決された入力情報
-- dataset load の結果
-- bundle ingest の結果
-- bundle diagnostic
+1. 入力値確認
+2. entry helper 呼び出し
+3. ReporterSessionContext 取得
+4. session_state へ反映
+5. 必要なメッセージ表示
 
-### 5-2. load 成否と context 更新
-以下のケースを自然に表現できるようにしてください。
-
-#### ケースA
-resolved input あり / dataset 成功 / bundle 成功  
-→ fully populated に近い context
-
-#### ケースB
-resolved input あり / dataset 成功 / bundle 失敗  
-→ dataset はあるが bundle diagnostic は error または warning
-
-#### ケースC
-resolved input あり / dataset 失敗  
-→ resolved_input_context は残るが dataset は None
-
-#### ケースD
-未入力または未解決  
-→ context は None または unresolved 状態として扱う
+### 5-2. 描画側は session context を読む
+Input Resolution Details や bundle summary は、
+できるだけ `reporter_session_context` を起点に描画してください。
 
 ### 5-3. 既存 helper の扱い
-`_try_load_bundle()` などの既存 helper を使うのはかまいませんが、
-その結果を最終的に `ReporterSessionContext` に反映してください。
+`_try_load_bundle()` や `_render_bundle_summary()` など既存 helper を残してもかまいません。
+ただし、可能であれば役割を見直し、
 
-### 5-4. 表示起点
-入口周辺の表示はできるだけ
+- `_try_load_bundle()` 相当の責務が entry helper に吸収される
+- `_render_bundle_summary()` は context を読むだけ
 
-- `session_ctx = st.session_state.get("reporter_session_context")`
-
-のように受けて、
-そこから読む形に寄せてください。
+に寄せてください。
 
 ---
 
 ## 6. テスト要件
 
-最低限、以下のテストを追加してください。
+最低限、以下を追加または更新してください。
 
-### 6-1. ReporterSessionContext 生成 test
+### 6-1. entry helper 単体テスト
 観点:
-- resolved_input_context / dataset / bundle / diagnostic を与えると
-  期待通りの context が作られる
+- 入力から ReporterSessionContext が返る
+- dataset 成功 / bundle 成功
+- dataset 成功 / bundle 失敗
+- dataset 失敗
+- unresolved input
+が自然に表現される
 
-### 6-2. partial state test
-観点:
-- dataset のみ
-- dataset + bundle
-- resolved_input のみ
-- resolved_input + diagnostic error
-などの partial state が自然に扱える
+### 6-2. session_state 同期 helper テスト
+追加した場合のみ、
+context から既存 session key 群へ正しく同期されることをテストしてください。
 
-### 6-3. property test
-便利 property を追加した場合、
-以下が直感通り動くことをテストしてください。
+### 6-3. stale state 防止テスト
+可能なら、
+前回成功状態のあとに失敗ケースを流しても不自然な state が残りにくいことを確認してください。
 
-例:
-- `has_dataset`
-- `has_analysis_bundle`
-- `is_dataset_only_mode`
-- `is_bundle_warning`
-- `is_bundle_error`
+### 6-4. 既存テストの通過
+以下を壊さないこと。
 
-### 6-4. app integration の最小確認
-観点:
-- `reporter_session_context` を導入しても
-  既存の path 解決 test が壊れない
-- v0.13.2 の resolved_input_context test が壊れない
-- 既存 integration test が通る
-- v0.12 の initial handoff surface を壊していない
-
-### 6-5. stale state 防止の確認
-可能なら以下もテストしてください。
-- 新しい load 試行時に古い bundle / diagnostic が不自然に残らない
-- dataset failure 時に前回成功分が誤表示されにくい
+- v0.13.1 の path 解決テスト
+- v0.13.2 の resolved input context テスト
+- v0.13.3 の reporter session context テスト
+- integration test
 
 ---
 
 ## 7. 受け入れ基準
 
-以下を満たしたら、このタスクは done 候補です。
+以下を満たしたら done 候補です。
 
-- `ReporterSessionContext` が追加されている
-- resolved_input_context / dataset / analysis_bundle / analysis_bundle_diagnostic を束ねられる
-- context 生成が pure な helper / classmethod で定義されている
-- `st.session_state["reporter_session_context"]` に入口状態を保持できる
-- app.py の入口周辺が context を読む形に少し寄っている
-- dataset / bundle / diagnostic の責務を混ぜていない
-- v0.13.1 / v0.13.2 のテストを壊していない
-- 既存 integration test が通っている
+- app.py の入口処理が小さな helper に寄っている
+- path 解決 / dataset load / bundle ingest / diagnostic / session context 構築が app.py から多少薄くなっている
+- session_state 更新が 1 箇所に寄っている
+- app.py 側が context を読む形に一段進んでいる
+- 既存 session key 互換を維持している
+- downstream 機能へ影響を広げていない
+- 既存テストが通っている
 
 ---
 
@@ -316,40 +298,38 @@ resolved input あり / dataset 失敗
 
 セルフチェックで以下を確認してください。
 
-- ReporterSessionContext が巨大 abstraction になっていない
-- dataset / bundle / diagnostic の意味を壊していない
-- resolved_input_context の責務を維持している
-- app.py に state 分岐を再増殖させていない
-- Streamlit 依存を context 本体に持ち込んでいない
-- 既存 public API を壊していない
-- Input セクション周辺の整理に留めた
-- downstream 機能へ広げていない
-- stale state が以前より悪化していない
+- app.py の責務が減った
+- helper が巨大 abstraction になっていない
+- path 解決ロジックを再複製していない
+- diagnostic 判定ロジックを再複製していない
+- ReporterSessionContext の責務を壊していない
+- Streamlit 依存処理と pure 処理の境界が以前より明確になった
+- 下流 use-case に踏み込んでいない
+- stale state が悪化していない
 
 ---
 
 ## 9. Gemini への注意
 
-もし実装中に以下の問題が出たら、
-独断で大きく広げずに報告してください。
+もし実装中に以下の問題が出たら、独断で広げずに報告してください。
 
-- ReporterSessionContext を入れても app.py 側の整理効果が薄い
-- 既存 helper の返り値設計が session context と噛み合わない
-- 古い session key 群との二重管理が不自然になる
-- v0.13.4 の薄化までやらないと設計が閉じない
+- 入口 orchestration helper を作ると app.py の差分が逆に増える
+- `_try_load_bundle()` や既存 helper の責務が中途半端に重複する
+- session key の互換維持と単一更新点化が両立しにくい
+- v0.13.5 の test 固定まで見ないと自然に閉じない
 
 その場合は以下を明示してください。
 
-- 今回スコープでどこまでなら自然か
-- どこからが v0.13.4 に送るべき論点か
-- 既存互換性維持のために残した妥協点は何か
+- 今回スコープで自然にできる最小整理はどこまでか
+- 何を v0.13.5 に送るべきか
+- 妥協して残した重複は何か
 
 ---
 
 ## 10. 完了報告フォーマット
 
 完了報告
-タスク名: v0.13.3 Reporter Session Context の導入
+タスク名: v0.13.4 app.py 入口ロジックの薄化
 変更ファイル: <files>
 実装要約: <何をしたか>
 非変更範囲: <何を変えていないか>

@@ -54,6 +54,7 @@ from iwa_rnaseq_reporter.models.analysis_bundle_view_model import ReporterAnalys
 from iwa_rnaseq_reporter.io.input_resolution import resolve_reporter_input_paths
 from iwa_rnaseq_reporter.app.resolved_input_context import ResolvedInputContext
 from iwa_rnaseq_reporter.app.reporter_session_context import ReporterSessionContext
+from iwa_rnaseq_reporter.app.entry_loader import load_reporter_entry_state
 
 st.set_page_config(page_title="iwa-rnaseq-reporter", layout="wide")
 st.title("iwa-rnaseq-reporter")
@@ -116,43 +117,18 @@ def build_validation_df(ds) -> pd.DataFrame:
     )
 
 
-def _try_load_bundle(input_path_str: str) -> tuple[Optional[ReporterAnalysisBundle], Optional[BundleDiagnostic]]:
-    """Attempt to load analysis bundle and return result with diagnostics."""
-    try:
-        bundle = load_reporter_analysis_bundle(input_path_str)
-        
-        # Determine diagnostic status
-        warning_flags = []
-        if bundle.warning_summary:
-            warning_flags.append("Bundle has internal warnings.")
-        
-        alignment = bundle.sample_metadata_alignment_status
-        if alignment and not alignment.get("is_aligned", True):
-            warning_flags.append("Sample metadata may be misaligned.")
-            
-        if warning_flags:
-            diag = BundleDiagnostic(
-                status="warning",
-                user_message="Analysis Bundle loaded with warnings.",
-                technical_message=f"Warnings detected: {', '.join(warning_flags)}",
-                warning_flags=warning_flags,
-                manifest_path=input_path_str
-            )
-        else:
-            diag = BundleDiagnostic(
-                status="ok",
-                user_message="Analysis Bundle loaded successfully.",
-                manifest_path=input_path_str
-            )
-        return bundle, diag
-        
-    except Exception as e:
-        return None, BundleDiagnostic(
-            status="error",
-            user_message="Analysis Bundle metadata is not available.",
-            technical_message=str(e),
-            manifest_path=input_path_str
-        )
+def sync_reporter_session_state(session_ctx: ReporterSessionContext):
+    """
+    Sync the unified ReporterSessionContext with individual session_state keys 
+    for downstream backward compatibility.
+    """
+    st.session_state["reporter_session_context"] = session_ctx
+    
+    # Sync legacy keys
+    st.session_state["resolved_input_context"] = session_ctx.resolved_input_context
+    st.session_state["dataset"] = session_ctx.dataset
+    st.session_state["analysis_bundle"] = session_ctx.analysis_bundle
+    st.session_state["analysis_bundle_diagnostic"] = session_ctx.analysis_bundle_diagnostic
 
 
 def _render_bundle_summary(session_ctx: Optional[ReporterSessionContext]):
@@ -214,60 +190,34 @@ if st.button("Load Dataset"):
     if not input_path_str:
         st.error("Please provide a path.")
     else:
-        # v0.13.1/2: Normalize input resolution and context
-        resolution = resolve_reporter_input_paths(input_path_str)
-        res_ctx = ResolvedInputContext.from_resolution_result(resolution)
-        
-        if res_ctx.is_unresolved:
-            st.error("Failed to resolve input path.")
-            for msg in res_ctx.resolution_messages:
-                st.info(msg)
-            # Reset context on failure
-            st.session_state["reporter_session_context"] = ReporterSessionContext(resolved_input_context=res_ctx)
-        else:
-            try:
-                ds = None
-                bundle = None
-                diag = None
+        try:
+            # v0.13.4: Orchestrate entry load using specialized helper
+            session_ctx = load_reporter_entry_state(input_path_str)
+            sync_reporter_session_state(session_ctx)
 
-                # Load dataset if resolved
-                if res_ctx.has_dataset_manifest:
-                    ds = load_reporter_dataset(res_ctx.resolved_dataset_manifest_path)
-                else:
-                    st.warning("Dataset manifest not resolved; entering bundle-only mode (partial support).")
+            # Notification based on context
+            res_ctx = session_ctx.resolved_input_context
+            if res_ctx.is_unresolved:
+                st.error("Failed to resolve input path.")
+                for msg in res_ctx.resolution_messages:
+                    st.info(msg)
+            else:
+                if not session_ctx.has_dataset:
+                    st.warning("Dataset not loaded. Check resolution details.")
                 
-                # Load bundle if resolved
-                if res_ctx.has_bundle_manifest:
-                    bundle, diag = _try_load_bundle(res_ctx.resolved_bundle_manifest_path)
-                
-                # v0.13.3: Build and store session context
-                session_ctx = ReporterSessionContext.from_parts(
-                    resolved_input_context=res_ctx,
-                    dataset=ds,
-                    analysis_bundle=bundle,
-                    analysis_bundle_diagnostic=diag
-                )
-                st.session_state["reporter_session_context"] = session_ctx
-
-                # Keep legacy keys for downstream compatibility
-                st.session_state["resolved_input_context"] = res_ctx
-                st.session_state["dataset"] = ds
-                st.session_state["analysis_bundle"] = bundle
-                st.session_state["analysis_bundle_diagnostic"] = diag
-                    
                 st.success(f"Input resolved as {res_ctx.input_kind} ({res_ctx.load_mode})")
                 
-            except ReporterLoadError as e:
-                st.error("Failed to load dataset.")
-                for msg in e.messages:
-                    if msg.level == "fatal":
-                        st.error(f"FATAL [{msg.code}]: {msg.message}")
-                    elif msg.level == "warning":
-                        st.warning(f"WARNING [{msg.code}]: {msg.message}")
-                    else:
-                        st.info(f"INFO [{msg.code}]: {msg.message}")
-            except Exception as e:
-                st.exception(e)
+        except ReporterLoadError as e:
+            st.error("Failed to load dataset.")
+            for msg in e.messages:
+                if msg.level == "fatal":
+                    st.error(f"FATAL [{msg.code}]: {msg.message}")
+                elif msg.level == "warning":
+                    st.warning(f"WARNING [{msg.code}]: {msg.message}")
+                else:
+                    st.info(f"INFO [{msg.code}]: {msg.message}")
+        except Exception as e:
+            st.exception(e)
 
 session_ctx = st.session_state.get("reporter_session_context")
 
