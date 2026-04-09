@@ -15,12 +15,15 @@ def test_try_load_bundle_success():
     from app import _try_load_bundle
     
     mock_bundle = MagicMock()
+    mock_bundle.warning_summary = None
+    mock_bundle.sample_metadata_alignment_status = None
+    
     with patch("app.load_reporter_analysis_bundle", return_value=mock_bundle):
         _try_load_bundle("/valid/path")
         
         import streamlit as st
         assert st.session_state["analysis_bundle"] == mock_bundle
-        assert st.session_state["analysis_bundle_load_error"] is None
+        assert st.session_state["analysis_bundle_diagnostic"].status == "ok"
 
 @patch("streamlit.session_state", {})
 def test_try_load_bundle_failure():
@@ -31,7 +34,8 @@ def test_try_load_bundle_failure():
         
         import streamlit as st
         assert st.session_state["analysis_bundle"] is None
-        assert st.session_state["analysis_bundle_load_error"] == "Load Failed"
+        assert st.session_state["analysis_bundle_diagnostic"].status == "error"
+        assert st.session_state["analysis_bundle_diagnostic"].technical_message == "Load Failed"
 
 if __name__ == "__main__":
     # Note: Running this might trigger app.py top-level execution if not careful.
