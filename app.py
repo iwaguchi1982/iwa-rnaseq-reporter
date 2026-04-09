@@ -10,6 +10,8 @@ sys.path.append(str(Path(__file__).parent / "src"))
 from iwa_rnaseq_reporter.legacy.loader import load_reporter_dataset, ReporterLoadError
 from iwa_rnaseq_reporter.legacy.analysis import (
     get_matrix_by_kind,
+    build_analysis_sample_table,
+    add_display_labels,
 )
 import plotly.express as px
 import numpy as np
@@ -29,13 +31,8 @@ from iwa_rnaseq_reporter.legacy.gene_search import (
 from iwa_rnaseq_reporter.legacy.feature_stats import (
     compute_feature_statistics,
 )
-from iwa_rnaseq_reporter.legacy.deg_input import (
-    get_comparison_candidate_columns,
-    summarize_groups,
-    build_deg_input,
-    validate_deg_input,
-    build_group_summary,
-    build_comparison_sample_table,
+from iwa_rnaseq_reporter.app.deg_sections import (
+    render_deg_comparison_design_section,
 )
 from iwa_rnaseq_reporter.legacy.deg_stats import (
     compute_statistical_deg,
@@ -432,106 +429,8 @@ if session_ctx and session_ctx.is_dataset_ready:
     # --------------------------------------------------
     # 13. DEG Comparison Design
     # --------------------------------------------------
-    st.header("13. DEG Comparison Design")
-
     if workspace is not None:
-        st.info(
-            f"Comparison design uses the current analysis matrix and included samples.  \n"
-            f"**Current Settings:** `{workspace.matrix_kind}` / `log2p1={workspace.analysis_config.log2p1}` / "
-            f"`use_exclude={workspace.analysis_config.use_exclude}` / "
-            f"`min_nonzero={workspace.analysis_config.min_feature_nonzero_samples}` / "
-            f"`min_mean={workspace.analysis_config.min_feature_mean}`"
-        )
-
-        comparison_sample_table = build_analysis_sample_table(
-            workspace.dataset,
-            matrix_kind=workspace.matrix_kind,
-            use_exclude=workspace.analysis_config.use_exclude,
-        )
-
-        # In v0.1.4, candidate columns are explicitly derived from included samples
-        comparison_candidate_columns = get_comparison_candidate_columns(comparison_sample_table)
-
-        if not comparison_candidate_columns:
-            st.warning("No comparison-ready metadata columns were found among the currently included samples.")
-            deg_input_obj = None
-        else:
-            d1, d2, d3 = st.columns(3)
-            with d1:
-                comparison_column = st.selectbox(
-                    "Comparison column",
-                    options=comparison_candidate_columns,
-                    index=0,
-                )
-
-            group_summary = summarize_groups(comparison_sample_table, comparison_column)
-            valid_group_names = group_summary["group_name"].tolist()
-
-            if len(valid_group_names) < 2:
-                st.warning(
-                    f"Selected column '{comparison_column}' does not have at least 2 non-empty groups "
-                    "in the current analysis set."
-                )
-                deg_input_obj = None
-            else:
-                with d2:
-                    group_a = st.selectbox(
-                        "Group A (Case)",
-                        options=valid_group_names,
-                        index=0,
-                    )
-
-                remaining_groups = [g for g in valid_group_names if g != group_a]
-                with d3:
-                    group_b = st.selectbox(
-                        "Group B (Control)",
-                        options=remaining_groups,
-                        index=0 if remaining_groups else None,
-                    )
-
-                st.subheader("Group Summary (Included Samples)")
-                # UI Refinement: Use the helper to generate the summary for the active design
-                # Note: valid_group_names is still needed for selectbox options
-                st.dataframe(format_display_df(group_summary), use_container_width=True)
-
-                try:
-                    deg_input_obj = build_deg_input(
-                        workspace.dataset,
-                        matrix_kind=workspace.matrix_kind,
-                        group_column=comparison_column,
-                        group_a=group_a,
-                        group_b=group_b,
-                        log2p1=workspace.analysis_config.log2p1,
-                        use_exclude=workspace.analysis_config.use_exclude,
-                        min_feature_nonzero_samples=workspace.analysis_config.min_feature_nonzero_samples,
-                        min_feature_mean=workspace.analysis_config.min_feature_mean,
-                    )
-
-                    issues = validate_deg_input(deg_input_obj, min_samples_per_group=2)
-
-                    st.write(
-                        f"**Comparison samples:** `{len(deg_input_obj.feature_matrix.columns)}` "
-                        f"(`{group_a}`: {len(deg_input_obj.group_a_samples)}, "
-                        f"`{group_b}`: {len(deg_input_obj.group_b_samples)})"
-                    )
-
-                    if issues:
-                        st.warning("Comparison design has validation issues:")
-                        for issue in issues:
-                            st.warning(issue)
-                    else:
-                        st.success("Comparison design looks ready for DEG preview.")
-
-                    with st.expander("Comparison Sample Table", expanded=False):
-                        # UI Refinement: Use helper to extract relevant metadata for comparison samples
-                        st.dataframe(
-                            format_display_df(build_comparison_sample_table(deg_input_obj)),
-                            use_container_width=True,
-                        )
-
-                except Exception as e:
-                    st.error(f"Failed to build comparison design: {e}")
-                    deg_input_obj = None
+        deg_input_obj, comparison_column, group_a, group_b = render_deg_comparison_design_section(workspace)
     else:
         deg_input_obj = None
 
