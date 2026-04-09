@@ -16,3 +16,6 @@ results/
 logs/
 *.log
 Implementation_spec.md
+MEMO*.txt
+MEMO*.md
+*_spec.md
