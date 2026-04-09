@@ -58,7 +58,17 @@ def load_reporter_entry_state(input_path_str: str) -> ReporterSessionContext:
     res_ctx = ResolvedInputContext.from_resolution_result(resolution)
     
     if res_ctx.is_unresolved:
-        return ReporterSessionContext(resolved_input_context=res_ctx)
+        # Create error diagnostic for unresolved input to maintain legacy UI feedback
+        diag = BundleDiagnostic(
+            status="error",
+            user_message="Analysis Bundle metadata is not available.",
+            technical_message="Input resolution failed: " + "; ".join(res_ctx.resolution_messages),
+            manifest_path=input_path_str
+        )
+        return ReporterSessionContext(
+            resolved_input_context=res_ctx,
+            analysis_bundle_diagnostic=diag
+        )
 
     ds = None
     bundle = None
@@ -66,13 +76,9 @@ def load_reporter_entry_state(input_path_str: str) -> ReporterSessionContext:
 
     # 2. Try load dataset if resolved
     if res_ctx.has_dataset_manifest:
-        try:
-            ds = load_reporter_dataset(res_ctx.resolved_dataset_manifest_path)
-        except ReporterLoadError:
-            # We let the caller handle reporting, but we capture what we have
-            return ReporterSessionContext(resolved_input_context=res_ctx)
-        except Exception:
-            return ReporterSessionContext(resolved_input_context=res_ctx)
+        # v0.13.5: Do NOT catch ReporterLoadError here. 
+        # Let it propagate to app.py for UI error reporting to maintain legacy behavior.
+        ds = load_reporter_dataset(res_ctx.resolved_dataset_manifest_path)
 
     # 3. Try load bundle if resolved
     if res_ctx.has_bundle_manifest:

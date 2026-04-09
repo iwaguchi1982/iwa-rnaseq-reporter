@@ -22,6 +22,34 @@ def test_dataset_ready_context():
     assert ctx.is_dataset_only_mode is True
     assert ctx.is_bundle_ready is False
 
+def test_fully_populated_context():
+    res_ctx = ResolvedInputContext(
+        original_input_path="in",
+        resolved_dataset_manifest_path="ds",
+        resolved_bundle_manifest_path="bundle",
+        input_kind="kind",
+        load_mode="mode",
+        resolution_messages=()
+    )
+    ds = object()
+    bundle = object()
+    diag = BundleDiagnostic(status="ok", user_message="ok")
+    
+    ctx = ReporterSessionContext(
+        resolved_input_context=res_ctx,
+        dataset=ds,
+        analysis_bundle=bundle,
+        analysis_bundle_diagnostic=diag
+    )
+    
+    assert ctx.has_resolved_input is True
+    assert ctx.has_dataset is True
+    assert ctx.has_analysis_bundle is True
+    assert ctx.has_bundle_diagnostic is True
+    assert ctx.is_dataset_ready is True
+    assert ctx.is_bundle_ready is True
+    assert ctx.is_dataset_only_mode is False
+
 def test_bundle_ready_context():
     bundle = ReporterAnalysisBundle(
         run_id="run1", 

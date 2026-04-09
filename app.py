@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import sys
 from pathlib import Path
+from typing import Optional, Any
 
 # Add src to sys.path to allow importing from iwa_rnaseq_reporter package
 sys.path.append(str(Path(__file__).parent / "src"))

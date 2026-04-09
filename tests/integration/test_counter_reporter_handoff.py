@@ -52,11 +52,13 @@ def test_integration_diagnostic_warning():
     """
     assert WARNING_BUNDLE_MANIFEST.exists(), f"Fixture not found at {WARNING_BUNDLE_MANIFEST}"
     
-    from app import _try_load_bundle
+    from app import sync_reporter_session_state
+    from iwa_rnaseq_reporter.app.entry_loader import load_reporter_entry_state
     import streamlit as st
     
     # Execute the app logic
-    _try_load_bundle(str(WARNING_BUNDLE_MANIFEST))
+    ctx = load_reporter_entry_state(str(WARNING_BUNDLE_MANIFEST))
+    sync_reporter_session_state(ctx)
     
     diag = st.session_state["analysis_bundle_diagnostic"]
     assert diag.status == "warning"
@@ -71,13 +73,15 @@ def test_integration_non_fatal_fallback():
     """
     Verify that an invalid path results in an error diagnostic but remains non-fatal.
     """
-    from app import _try_load_bundle
+    from app import sync_reporter_session_state
+    from iwa_rnaseq_reporter.app.entry_loader import load_reporter_entry_state
     import streamlit as st
     
     invalid_path = "/tmp/non_existent_bundle_manifest.json"
     
     # Execute the app logic
-    _try_load_bundle(invalid_path)
+    ctx = load_reporter_entry_state(invalid_path)
+    sync_reporter_session_state(ctx)
     
     diag = st.session_state["analysis_bundle_diagnostic"]
     assert diag.status == "error"

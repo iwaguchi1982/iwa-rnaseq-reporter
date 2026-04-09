@@ -25,6 +25,17 @@ def mock_resolution_unresolved():
         resolution_messages=["failed"]
     )
 
+@pytest.fixture
+def mock_resolution_dataset_only():
+    return InputResolutionResult(
+        original_input_path="/path/to/ds",
+        resolved_dataset_manifest_path="/path/to/dataset.json",
+        resolved_bundle_manifest_path=None,
+        input_kind="dataset_dir",
+        load_mode="dataset_only",
+        resolution_messages=["no bundle found"]
+    )
+
 def test_load_entry_state_success(mock_resolution_success):
     with patch("iwa_rnaseq_reporter.app.entry_loader.resolve_reporter_input_paths") as mock_resolve:
         with patch("iwa_rnaseq_reporter.app.entry_loader.load_reporter_dataset") as mock_load_ds:
@@ -56,18 +67,14 @@ def test_load_entry_state_unresolved(mock_resolution_unresolved):
         assert ctx.resolved_input_context.is_unresolved is True
         assert ctx.has_dataset is False
 
-def test_load_entry_state_dataset_error(mock_resolution_success):
+def test_load_entry_state_dataset_error_propagation(mock_resolution_success):
     with patch("iwa_rnaseq_reporter.app.entry_loader.resolve_reporter_input_paths") as mock_resolve:
         with patch("iwa_rnaseq_reporter.app.entry_loader.load_reporter_dataset") as mock_load_ds:
             mock_resolve.return_value = mock_resolution_success
             mock_load_ds.side_effect = ReporterLoadError([])
             
-            ctx = load_reporter_entry_state("/path/to/in")
-            
-            assert ctx.has_resolved_input is True
-            assert ctx.has_dataset is False
-            # Should still have resolved input context
-            assert ctx.resolved_input_context.has_dataset_manifest is True
+            with pytest.raises(ReporterLoadError):
+                load_reporter_entry_state("/path/to/in")
 
 def test_load_entry_state_bundle_error(mock_resolution_success):
     with patch("iwa_rnaseq_reporter.app.entry_loader.resolve_reporter_input_paths") as mock_resolve:
@@ -84,3 +91,36 @@ def test_load_entry_state_bundle_error(mock_resolution_success):
                 assert ctx.has_analysis_bundle is False
                 assert ctx.analysis_bundle_diagnostic.status == "error"
                 assert "bundle error" in ctx.analysis_bundle_diagnostic.technical_message
+
+def test_load_entry_state_dataset_only(mock_resolution_dataset_only):
+    with patch("iwa_rnaseq_reporter.app.entry_loader.resolve_reporter_input_paths") as mock_resolve:
+        with patch("iwa_rnaseq_reporter.app.entry_loader.load_reporter_dataset") as mock_load_ds:
+            mock_resolve.return_value = mock_resolution_dataset_only
+            mock_ds = MagicMock()
+            mock_load_ds.return_value = mock_ds
+                
+            ctx = load_reporter_entry_state("/path/to/ds")
+                
+            assert ctx.has_resolved_input is True
+            assert ctx.has_dataset is True
+            assert ctx.has_analysis_bundle is False
+            assert ctx.is_dataset_only_mode is True
+
+def test_load_entry_state_bundle_warning(mock_resolution_success):
+    with patch("iwa_rnaseq_reporter.app.entry_loader.resolve_reporter_input_paths") as mock_resolve:
+        with patch("iwa_rnaseq_reporter.app.entry_loader.load_reporter_dataset") as mock_load_ds:
+            with patch("iwa_rnaseq_reporter.app.entry_loader.load_reporter_analysis_bundle") as mock_load_bundle:
+                
+                mock_resolve.return_value = mock_resolution_success
+                mock_load_ds.return_value = MagicMock()
+                
+                mock_bundle = MagicMock()
+                mock_bundle.warning_summary = "Some warning"
+                mock_bundle.sample_metadata_alignment_status = None
+                mock_load_bundle.return_value = mock_bundle
+                
+                ctx = load_reporter_entry_state("/path/to/in")
+                
+                assert ctx.has_analysis_bundle is True
+                assert ctx.analysis_bundle_diagnostic.status == "warning"
+                assert "warnings detected" in ctx.analysis_bundle_diagnostic.user_message.lower() or "warning" in ctx.analysis_bundle_diagnostic.technical_message.lower()
