@@ -3,8 +3,9 @@ import json
 import zipfile
 import re
 from dataclasses import asdict
-from typing import Any
+from typing import Any, Optional
 from .deg_export_spec import DegExportPayload
+from .deg_handoff_builder import build_deg_handoff_payload
 
 def build_deg_export_bundle_filename(payload: DegExportPayload) -> str:
     """
@@ -15,10 +16,16 @@ def build_deg_export_bundle_filename(payload: DegExportPayload) -> str:
     sanitized = re.sub(r"[^a-zA-Z0-9_\-]", "_", raw_name)
     return f"{sanitized}.zip"
 
-def build_deg_export_bundle(payload: DegExportPayload) -> bytes:
+def build_deg_export_bundle(payload: DegExportPayload, bundle_filename: Optional[str] = None) -> bytes:
     """
     Assemble a ZIP archive containing all DEG export components in-memory.
     """
+    if bundle_filename is None:
+        bundle_filename = build_deg_export_bundle_filename(payload)
+
+    # Generate handoff contract for inclusion
+    handoff_payload = build_deg_handoff_payload(payload, bundle_filename)
+
     buf = io.BytesIO()
     
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -38,8 +45,14 @@ def build_deg_export_bundle(payload: DegExportPayload) -> bytes:
             "summary_metrics.json",
             json.dumps(asdict(payload.summary_metrics), indent=2, ensure_ascii=False)
         )
+
+        # 3. Handoff Contract (JSON)
+        zf.writestr(
+            "handoff_contract.json",
+            json.dumps(handoff_payload.to_dict(), indent=2, ensure_ascii=False)
+        )
         
-        # 3. Report Summary (Markdown)
+        # 4. Report Summary (Markdown)
         report_text = _build_report_summary_md(payload)
         zf.writestr("report_summary.md", report_text)
         

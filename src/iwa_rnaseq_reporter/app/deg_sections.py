@@ -28,6 +28,7 @@ from iwa_rnaseq_reporter.app.deg_export_bundle import (
     build_deg_export_bundle,
     build_deg_export_bundle_filename
 )
+from iwa_rnaseq_reporter.app.deg_handoff_builder import build_deg_handoff_payload
 
 
 def render_deg_comparison_design_section(
@@ -290,10 +291,14 @@ def render_deg_analysis_section(
                 st.subheader("DEG Results Table")
                 st.dataframe(format_display_df(context.result_table.head(int(preview_top_n))), use_container_width=True)
                 
-                # v0.15.2/3: Formal export payload and bundle
+                # v0.15.2/3/4: Formal export payload, handoff contract and bundle
                 export_payload = build_deg_export_payload(context, deg_input_obj)
-                zip_bytes = build_deg_export_bundle(export_payload)
                 zip_filename = build_deg_export_bundle_filename(export_payload)
+                # Pass explicit filename to bundle builder
+                zip_bytes = build_deg_export_bundle(export_payload, bundle_filename=zip_filename)
+                
+                # Build handoff payload for UI preview
+                handoff_payload = build_deg_handoff_payload(export_payload, zip_filename)
 
                 st.write("### エクスポート")
                 st.info("解析結果、比較条件、実行メタデータをまとめた一式をダウンロードできます（推奨）。")
@@ -318,9 +323,13 @@ def render_deg_analysis_section(
                         use_container_width=True
                     )
                 
-                with st.expander("Show Export Payload Preview (JSON)", expanded=False):
-                    st.json(export_payload.summary.to_dict())
-                    st.json(export_payload.metadata.to_dict())
+                with st.expander("Show Export / Handoff Payload Preview (JSON)", expanded=False):
+                    tab1, tab2 = st.tabs(["Export Payload", "Handoff Contract"])
+                    with tab1:
+                        st.json(export_payload.summary.to_dict())
+                        st.json(export_payload.metadata.to_dict())
+                    with tab2:
+                        st.json(handoff_payload.to_dict())
 
             except Exception as e:
                 st.error(f"Failed to display DEG results: {e}")

@@ -49,9 +49,13 @@ def test_build_deg_export_bundle_contents():
         file_list = zf.namelist()
         assert "deg_results.csv" in file_list
         assert "comparison_summary.json" in file_list
-        assert "run_metadata.json" in file_list
         assert "summary_metrics.json" in file_list
         assert "report_summary.md" in file_list
+        
+        # Verify Handoff Contract JSON
+        assert "handoff_contract.json" in file_list
+        handoff_json = json.loads(zf.read("handoff_contract.json"))
+        assert handoff_json["identity"]["comparison_id"] == "group__A__vs__B__gene_tpm"
         
         # Verify JSON
         meta_json = json.loads(zf.read("run_metadata.json"))
