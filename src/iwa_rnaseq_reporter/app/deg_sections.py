@@ -22,6 +22,7 @@ from iwa_rnaseq_reporter.legacy.ui_utils import (
     format_display_df,
 )
 from iwa_rnaseq_reporter.app.analysis_workspace_context import AnalysisWorkspaceContext
+from iwa_rnaseq_reporter.app.deg_result_builder import build_deg_result_context
 
 
 def render_deg_comparison_design_section(
@@ -180,55 +181,48 @@ def render_deg_analysis_section(
                 with p4:
                     preview_top_n = st.number_input("Rows to display", min_value=10, max_value=1000, value=100, step=10)
 
-                deg_res = st.session_state.deg_res
-                res_df = deg_res.result_table.copy()
-
-                # Optimized: Use the new standardized annotation join
-                res_df = add_display_labels(res_df, workspace.dataset.feature_annotation)
-
-                if preview_sort_by in res_df.columns:
-                    ascending = True if preview_sort_by in ["padj", "p_value"] else False
-                    res_df = res_df.sort_values(by=preview_sort_by, ascending=ascending)
-
-                preferred_cols = [
-                    "rank_by_padj", "display_label", "gene_symbol", "feature_id", "log2_fc", 
-                    "padj", "p_value", "direction", "mean_group_a", "mean_group_b", "abs_log2_fc"
-                ]
-                display_cols = [c for c in preferred_cols if c in res_df.columns]
-                other_cols = [c for c in res_df.columns if c not in display_cols]
-                res_df = res_df[display_cols + other_cols]
-
-                sig_up = res_df[(res_df["padj"] < p_thresh) & (res_df["log2_fc"] > fc_thresh)]
-                sig_dn = res_df[(res_df["padj"] < p_thresh) & (res_df["log2_fc"] < -fc_thresh)]
+                # v0.15.1: Consolidate state into result context
+                context = build_deg_result_context(
+                    workspace=workspace,
+                    deg_input_obj=deg_input_obj,
+                    comparison_column=comparison_column,
+                    group_a=group_a,
+                    group_b=group_b,
+                    deg_res=st.session_state.deg_res,
+                    p_thresh=p_thresh,
+                    fc_thresh=fc_thresh,
+                    sort_by=preview_sort_by,
+                    top_n=int(preview_top_n)
+                )
 
                 st.info(
-                    f"**比較条件**: `{comparison_column}` において **{deg_res.group_a}** (A) vs **{deg_res.group_b}** (B) の比較を行っています。\n\n"
+                    f"**比較条件**: `{context.comparison_column}` において **{context.group_a}** (A) vs **{context.group_b}** (B) の比較を行っています。\n\n"
                     f"💡 **解釈のヒント**: \n"
-                    f"- `log2_fc` が **プラス(+)** ＝ **{deg_res.group_a}** で高発現\n"
-                    f"- `log2_fc` が **マイナス(-)** ＝ **{deg_res.group_b}** で高発現\n"
-                    f"- 有意判定は `padj < {p_thresh}` かつ `|log2_fc| > {fc_thresh}` に基づきます。"
+                    f"- `log2_fc` が **プラス(+)** ＝ **{context.group_a}** で高発現\n"
+                    f"- `log2_fc` が **マイナス(-)** ＝ **{context.group_b}** で高発現\n"
+                    f"- 有意判定は `padj < {context.threshold_snapshot.padj_threshold}` かつ `|log2_fc| > {context.threshold_snapshot.abs_log2_fc_threshold}` に基づきます。"
                 )
 
                 c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Features Tested", deg_res.n_features_tested)
-                c2.metric(f"Up in {deg_res.group_a[:10]}...", len(sig_up), help=f"Log2FC > {fc_thresh} & padj < {p_thresh}")
-                c3.metric(f"Down in {deg_res.group_a[:10]}...", len(sig_dn), help=f"Log2FC < -{fc_thresh} & padj < {p_thresh}")
-                c4.metric("Max |log2FC|", f"{res_df['abs_log2_fc'].max():.3f}" if not res_df.empty else "NA")
+                c1.metric("Features Tested", context.summary_metrics.n_features_tested)
+                c2.metric(f"Up in {context.group_a[:10]}...", context.summary_metrics.n_sig_up, help=f"Log2FC > {fc_thresh} & padj < {p_thresh}")
+                c3.metric(f"Down in {context.group_a[:10]}...", context.summary_metrics.n_sig_down, help=f"Log2FC < -{fc_thresh} & padj < {p_thresh}")
+                c4.metric("Max |log2FC|", f"{context.summary_metrics.max_abs_log2_fc:.3f}" if context.has_results else "NA")
 
                 # Volcano Plot
                 st.subheader("Volcano Plot")
                 
-                if len(sig_up) == 0 and len(sig_dn) == 0:
+                if context.summary_metrics.n_sig_up == 0 and context.summary_metrics.n_sig_down == 0:
                     st.warning("⚠️ 現在の閾値では有意遺伝子は 0 件です。閾値を緩めるか、p_value ベースでの確認もご検討ください。")
                 
-                volcano_df = res_df.copy()
+                volcano_df = context.result_table.copy()
                 volcano_df["-log10(padj)"] = -np.log10(volcano_df["padj"].fillna(1.0).clip(lower=1e-300))
                 
                 def get_sig_category(row):
                     if row["padj"] < p_thresh and row["log2_fc"] > fc_thresh:
-                        return f"Up in {deg_res.group_a}"
+                        return f"Up in {context.group_a}"
                     elif row["padj"] < p_thresh and row["log2_fc"] < -fc_thresh:
-                        return f"Down in {deg_res.group_a}"
+                        return f"Down in {context.group_a}"
                     else:
                         return "Not Significant"
 
@@ -243,12 +237,12 @@ def render_deg_analysis_section(
                     y="-log10(padj)",
                     color="Significance",
                     color_discrete_map={
-                        f"Up in {deg_res.group_a}": "red",
-                        f"Down in {deg_res.group_a}": "blue",
+                        f"Up in {context.group_a}": "red",
+                        f"Down in {context.group_a}": "blue",
                         "Not Significant": "lightgray"
                     },
                     hover_data=hover_cols,
-                    title=f"Volcano Plot: {deg_res.group_a} vs {deg_res.group_b}",
+                    title=f"Volcano Plot: {context.comparison_label}",
                     template="plotly_white"
                 )
                 
@@ -257,8 +251,8 @@ def render_deg_analysis_section(
                 fig.add_vline(x=-fc_thresh, line_dash="dash", line_color="black", annotation_text=f"log2FC = -{fc_thresh}")
                 
                 # Human-friendly Labeling
-                top_up = volcano_df[volcano_df["Significance"] == f"Up in {deg_res.group_a}"].sort_values("padj").head(10)
-                top_down = volcano_df[volcano_df["Significance"] == f"Down in {deg_res.group_a}"].sort_values("padj").head(10)
+                top_up = volcano_df[volcano_df["Significance"] == f"Up in {context.group_a}"].sort_values("padj").head(10)
+                top_down = volcano_df[volcano_df["Significance"] == f"Down in {context.group_a}"].sort_values("padj").head(10)
                 label_candidates = pd.concat([top_up, top_down])
                 
                 for _, row in label_candidates.iterrows():
@@ -274,25 +268,30 @@ def render_deg_analysis_section(
                 # Top up/down preview
                 st.subheader("Top Differentially Expressed Genes")
                 t1, t2 = st.columns(2)
+                
+                # Use context result table filtered for preview
+                sig_up = context.result_table[(context.result_table["padj"] < p_thresh) & (context.result_table["log2_fc"] > fc_thresh)]
+                sig_dn = context.result_table[(context.result_table["padj"] < p_thresh) & (context.result_table["log2_fc"] < -fc_thresh)]
+
                 with t1:
-                    st.write(f"**Top Up in {deg_res.group_a}**")
+                    st.write(f"**Top Up in {context.group_a}**")
                     display_cols_top = [c for c in ["display_label", "gene_symbol", "feature_id", "log2_fc", "padj"] if c in sig_up.columns]
                     st.dataframe(format_display_df(sig_up.sort_values("log2_fc", ascending=False).head(10)[display_cols_top]), use_container_width=True)
                 with t2:
-                    st.write(f"**Top Down in {deg_res.group_a}**")
+                    st.write(f"**Top Down in {context.group_a}**")
                     display_cols_top = [c for c in ["display_label", "gene_symbol", "feature_id", "log2_fc", "padj"] if c in sig_dn.columns]
                     st.dataframe(format_display_df(sig_dn.sort_values("log2_fc", ascending=True).head(10)[display_cols_top]), use_container_width=True)
 
                 st.subheader("DEG Results Table")
-                st.dataframe(format_display_df(res_df.head(int(preview_top_n))), use_container_width=True)
+                st.dataframe(format_display_df(context.result_table.head(int(preview_top_n))), use_container_width=True)
                 
                 st.write("### エクスポート")
                 st.caption("現在ブラウザ上でプレビューされている全てのDEG結果（全件）をCSV形式で保存します。")
-                csv = res_df.to_csv(index=False).encode('utf-8')
+                csv = context.result_table.to_csv(index=False).encode('utf-8')
                 st.download_button(
                     label="📥 フルDEG結果をCSVでダウンロード",
                     data=csv,
-                    file_name=f"deg_results_{deg_res.group_a}_vs_{deg_res.group_b}.csv",
+                    file_name=f"deg_results_{context.group_a}_vs_{context.group_b}.csv",
                     mime="text/csv",
                     type="primary",
                 )
