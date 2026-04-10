@@ -2,6 +2,7 @@ import pytest
 import io
 import zipfile
 import json
+import pandas as pd
 from unittest.mock import MagicMock
 from iwa_rnaseq_reporter.app.comparison_portfolio_context import ComparisonPortfolioContext, ComparisonRecord
 from iwa_rnaseq_reporter.app.comparison_portfolio_export_builder import (
@@ -27,6 +28,7 @@ def test_build_portfolio_export_payload_success():
     mock_record.export_payload = MagicMock()
     mock_record.export_payload.metadata = MagicMock()
     mock_record.export_payload.metadata.matrix_kind = "gene_tpm"
+    mock_record.export_payload.result_table = pd.DataFrame({"feature_id": [], "log2_fc": [], "padj": []})
     
     # Real metrics instance to support asdict()
     mock_record.summary_metrics = DegSummaryMetrics(100, 10, 5, 3.0)
@@ -73,6 +75,7 @@ def test_build_portfolio_export_bundle_contents():
     exp.summary.sample_count_group_a = 3
     exp.summary.group_b = "B"
     exp.summary.sample_count_group_b = 3
+    exp.result_table = pd.DataFrame({"feature_id": ["G1"], "log2_fc": [1.0], "padj": [0.01]})
     
     # Use real dataclass for asdict support
     real_metrics = DegSummaryMetrics(100, 10, 5, 4.0)
@@ -97,6 +100,7 @@ def test_build_portfolio_export_bundle_contents():
         assert "comparisons/comp-1/handoff_contract.json" in file_list
         assert "comparisons/comp-1/comparison_summary.json" in file_list
         assert "comparisons/comp-1/report_summary.md" in file_list
+        assert "comparisons/comp-1/deg_results.csv" in file_list
         
         # Verify JSON content
         manifest = json.loads(zf.read("portfolio_manifest.json"))

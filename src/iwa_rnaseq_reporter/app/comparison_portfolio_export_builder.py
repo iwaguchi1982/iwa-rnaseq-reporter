@@ -118,5 +118,10 @@ def build_comparison_portfolio_export_bundle(portfolio: ComparisonPortfolioConte
                 f"{base_path}/report_summary.md",
                 build_deg_report_summary_md(exp)
             )
+            # - deg_results.csv (Additive change for v0.17.3)
+            zf.writestr(
+                f"{base_path}/deg_results.csv",
+                exp.result_table.to_csv(index=False)
+            )
             
     return buf.getvalue()

@@ -2,6 +2,7 @@ import pytest
 import io
 import zipfile
 import json
+import pandas as pd
 from unittest.mock import MagicMock
 from iwa_rnaseq_reporter.app.comparison_portfolio_context import ComparisonPortfolioContext
 from iwa_rnaseq_reporter.app.comparison_portfolio_export_builder import (
@@ -34,6 +35,7 @@ def test_full_intake_flow_success():
         exp.metadata.matrix_kind = "gene_tpm"
         exp.metadata.to_dict.return_value = {"matrix_kind": "gene_tpm"}
         exp.summary.to_dict.return_value = {"comparison_label": f"Label {cid}", "comparison_column": "col", "group_a": "A", "group_b": "B"}
+        exp.result_table = pd.DataFrame({"feature_id": [], "log2_fc": [], "padj": []})
         
         metrics = DegSummaryMetrics(100, 10, 5, 2.0)
         exp.summary_metrics = metrics
@@ -90,6 +92,7 @@ def test_intake_with_rejected_comparison():
         exp.metadata.matrix_kind = "gene_tpm"
         exp.metadata.to_dict.return_value = {"matrix_kind": "gene_tpm"}
         exp.summary.to_dict.return_value = {"comparison_label": f"L{i}"}
+        exp.result_table = pd.DataFrame({"feature_id": [], "log2_fc": [], "padj": []})
         m = DegSummaryMetrics(100, 10, 5, 2.0)
         exp.summary_metrics = m
         r.export_payload = exp
