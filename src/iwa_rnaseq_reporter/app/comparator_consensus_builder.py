@@ -14,6 +14,7 @@ from .comparator_consensus import (
     ComparatorConsensusSummarySpec,
     ComparatorConsensusContext
 )
+from .comparator_execution_config import ConsensusDecisionConfigSpec, build_default_consensus_decision_config
 
 def resolve_consensus_label_for_reference(
     reference_dataset_id: str,
@@ -22,7 +23,6 @@ def resolve_consensus_label_for_reference(
 ) -> Tuple[str, str]:
     """
     Find the biological label for a reference comparison from the registry.
-    Implements Spec 5-1 / 5-3 (Fallback).
     """
     label_key = reference_comparison_id
     label_display = reference_comparison_id
@@ -43,11 +43,15 @@ def resolve_consensus_label_for_reference(
 
 def build_consensus_label_candidates(
     ranked_refs: Tuple[ComparatorRankedReferenceSpec, ...],
-    registry: ReferenceDatasetRegistry
+    registry: ReferenceDatasetRegistry,
+    consensus_config: Optional[ConsensusDecisionConfigSpec] = None
 ) -> Tuple[ConsensusLabelCandidateSpec, ...]:
     """
     Group ranked references by their biological label and compute aggregate metrics.
+    Sorting is governed by config policy.
     """
+    cfg = consensus_config if consensus_config else build_default_consensus_decision_config()
+    
     grouped: Dict[str, List[ComparatorRankedReferenceSpec]] = {}
     label_displays: Dict[str, str] = {}
     
@@ -77,7 +81,8 @@ def build_consensus_label_candidates(
             )
         ))
         
-    # Sort candidates according to Spec 7-4 (Method: Mean Score descending)
+    # Sort candidates according to config policy
+    # Current hardcoded logic matches the specific default policy string
     candidates.sort(
         key=lambda x: (x.mean_integrated_score, x.top_integrated_score, x.n_supporting_references),
         reverse=True
@@ -89,11 +94,15 @@ def build_consensus_evidence_profile(
     comparison_id: str,
     candidates: Tuple[ConsensusLabelCandidateSpec, ...],
     ranked_refs: Tuple[ComparatorRankedReferenceSpec, ...],
-    registry: ReferenceDatasetRegistry
+    registry: ReferenceDatasetRegistry,
+    consensus_config: Optional[ConsensusDecisionConfigSpec] = None
 ) -> ConsensusEvidenceProfileSpec:
     """
     Split references into supporting and conflicting based on the top candidate.
+    Uses weak support threshold from config.
     """
+    cfg = consensus_config if consensus_config else build_default_consensus_decision_config()
+    
     if not candidates:
         return ConsensusEvidenceProfileSpec(
             comparison_id=comparison_id,
@@ -149,24 +158,23 @@ def build_consensus_evidence_profile(
         conflicting_references=tuple(conflicts),
         support_margin=margin,
         has_conflict=len(conflicts) > 0,
-        has_weak_support=(top.mean_integrated_score < 0.3) # Arbitrary low threshold for weak support
+        has_weak_support=(top.mean_integrated_score < cfg.weak_support_mean_threshold)
     )
 
 def build_consensus_decision(
     evidence_profile: ConsensusEvidenceProfileSpec,
     has_top_rank_conflict: bool,
-    consensus_margin_threshold: float = 0.05,
-    minimum_supporting_references: int = 1
+    consensus_config: Optional[ConsensusDecisionConfigSpec] = None
 ) -> ConsensusDecisionSpec:
     """
-    Decide the final status based on evidence profile and ranking conflicts.
-    Implements Spec 8-1 / 8-3 (Method A).
+    Decide the final status based on evidence profile and ranking conflicts using config.
     """
+    cfg = consensus_config if consensus_config else build_default_consensus_decision_config()
     cid = evidence_profile.comparison_id
     top = evidence_profile.top_candidate
     
     if not top:
-        return ConsensusDecisionSpec(cid, "insufficient_evidence", None, None, ("no_ranked_matches",))
+        return ConsensusDecisionSpec(cid, cfg.insufficient_support_policy, None, None, ("no_ranked_matches",))
         
     reasons = []
     status = "consensus"
@@ -174,18 +182,18 @@ def build_consensus_decision(
     # 1. Check for Top-Rank Conflict (from Ranking phase)
     if has_top_rank_conflict:
         reasons.append("top_rank_conflict_present")
-        status = "no_consensus"
+        status = cfg.top_rank_conflict_policy
         
     # 2. Check Margin
     if evidence_profile.support_margin is not None:
-        if evidence_profile.support_margin < consensus_margin_threshold:
+        if evidence_profile.support_margin < cfg.consensus_margin_threshold:
             reasons.append("weak_support_margin")
-            status = "no_consensus"
+            status = cfg.weak_margin_policy
             
     # 3. Check Evidence Volume
-    if top.n_supporting_references < minimum_supporting_references:
+    if top.n_supporting_references < cfg.minimum_supporting_references:
         reasons.append("insufficient_supporting_references")
-        status = "insufficient_evidence"
+        status = cfg.insufficient_support_policy
 
     # Final mapping
     decided_lk = top.label_key if status == "consensus" else None
@@ -202,12 +210,13 @@ def build_consensus_decision(
 def build_comparator_consensus_context(
     ranking_context: ComparatorRankingContext,
     registry: ReferenceDatasetRegistry,
-    consensus_margin_threshold: float = 0.05,
-    minimum_supporting_references: int = 1
+    consensus_config: Optional[ConsensusDecisionConfigSpec] = None
 ) -> ComparatorConsensusContext:
     """
-    Orchestrate the consensus labeling phase.
+    Orchestrate the consensus labeling phase using the provided config.
     """
+    cfg = consensus_config if consensus_config else build_default_consensus_decision_config()
+    
     decisions: List[ConsensusDecisionSpec] = []
     profiles: List[ConsensusEvidenceProfileSpec] = []
     issues: List[ComparatorConsensusIssueSpec] = []
@@ -223,20 +232,16 @@ def build_comparator_consensus_context(
     comp_conflicts = {c.comparison_id for c in ranking_context.top_rank_conflicts}
     
     # 2. Process each comparison
-    # We use ranked_comparison_ids if we want to ensure we hit even those with no refs?
-    # Spec says 1 comparison per decision.
-    # Let's use all comparisons that went through ranking.
     target_cids = {r.comparison_id for r in ranking_context.ranked_references}
     
     for cid in target_cids:
         refs = tuple(ranked_by_cid.get(cid, []))
-        candidates = build_consensus_label_candidates(refs, registry)
-        profile = build_consensus_evidence_profile(cid, candidates, refs, registry)
+        candidates = build_consensus_label_candidates(refs, registry, consensus_config=cfg)
+        profile = build_consensus_evidence_profile(cid, candidates, refs, registry, consensus_config=cfg)
         decision = build_consensus_decision(
             profile, 
             cid in comp_conflicts,
-            consensus_margin_threshold,
-            minimum_supporting_references
+            consensus_config=cfg
         )
         
         profiles.append(profile)
@@ -268,5 +273,6 @@ def build_comparator_consensus_context(
         decisions=tuple(decisions),
         evidence_profiles=tuple(profiles),
         issues=tuple(issues),
-        summary=summary
+        summary=summary,
+        consensus_config=cfg
     )

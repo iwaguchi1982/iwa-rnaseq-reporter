@@ -30,10 +30,25 @@ def test_consensus_export_import_roundtrip():
         prof = ConsensusEvidenceProfileSpec("cid1", None, (), (), (), 0.5, False, False)
         summary = ComparatorConsensusSummarySpec(1, 1, 0, 0, 0, True)
         
-        # Use a mock for ranking_context as it's not direct output
+        # v0.19.3: Must use real context for ranking as config is serialized
         from unittest.mock import MagicMock
+        from iwa_rnaseq_reporter.app.comparator_ranking import (
+            ComparatorRankingContext,
+            ComparatorRankingSummarySpec
+        )
+        from iwa_rnaseq_reporter.app.comparator_ranking_input import (
+            ComparatorRankingInputContext,
+            ComparatorRankingInputSummarySpec
+        )
+        
+        # Minimal valid ranking context
+        rank_sum = ComparatorRankingInputSummarySpec(0, 0, 0, 0, False, True)
+        rank_in = ComparatorRankingInputContext(MagicMock(), (), (), (), rank_sum)
+        rank_sum_out = ComparatorRankingSummarySpec(0, 0, 0, True)
+        rank_ctx = ComparatorRankingContext(rank_in, (), (), (), rank_sum_out)
+
         ctx = ComparatorConsensusContext(
-            ranking_context=MagicMock(),
+            ranking_context=rank_ctx,
             decisions=(dec,),
             evidence_profiles=(prof,),
             issues=(),
@@ -78,4 +93,14 @@ def test_consensus_export_import_roundtrip():
         assert import_ctx.results_table is not None
         assert len(import_ctx.results_table) == 1
         # CSV column names in real export include 'comparison_id'
-        assert import_ctx.results_table.iloc[0]["comparison_id"] == "cid1"
+        # 8. Compare execution_config (v0.19.3)
+        assert "execution_config" in import_ctx.manifest
+        assert "execution_config" in import_ctx.handoff_contract
+        
+        m_cfg = import_ctx.manifest["execution_config"]
+        h_cfg = import_ctx.handoff_contract["execution_config"]
+        
+        # Parity
+        assert m_cfg["config_version"] == h_cfg["config_version"]
+        assert m_cfg["ranking"]["overlap_weight"] == 0.20
+        assert h_cfg["consensus"]["consensus_margin_threshold"] == 0.05

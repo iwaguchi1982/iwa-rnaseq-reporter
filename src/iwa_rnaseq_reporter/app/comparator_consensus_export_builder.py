@@ -11,6 +11,7 @@ from .comparator_consensus_export import (
     ComparatorConsensusExportPayload,
     ProvenanceSpec
 )
+from .comparator_execution_config import ComparatorExecutionConfigSpec
 from .version_helper import get_package_version
 
 def build_consensus_run_id() -> str:
@@ -56,6 +57,13 @@ def build_consensus_export_payload(
         now = datetime.datetime.now(datetime.timezone.utc)
         gen_at = now.isoformat()
         
+    # v0.19.3: Coordinated Execution Config
+    exec_cfg = ComparatorExecutionConfigSpec(
+        ranking=context.ranking_context.ranking_config,
+        consensus=context.consensus_config,
+        config_source="context_injected"
+    )
+
     prov = ProvenanceSpec(
         producer_app="iwa_rnaseq_reporter",
         producer_version=get_package_version(),
@@ -70,7 +78,8 @@ def build_consensus_export_payload(
         n_no_consensus=context.summary.n_no_consensus,
         n_insufficient_evidence=context.summary.n_insufficient_evidence,
         generated_at=gen_at,
-        provenance=prov
+        provenance=prov,
+        execution_config=exec_cfg
     )
     
     return ComparatorConsensusExportPayload(
@@ -79,7 +88,8 @@ def build_consensus_export_payload(
         decisions=context.decisions,
         evidence_profiles=context.evidence_profiles,
         issues=context.issues,
-        summary=context.summary
+        summary=context.summary,
+        execution_config=exec_cfg
     )
 
 def build_consensus_report_summary_md(
@@ -109,6 +119,18 @@ def build_consensus_report_summary_md(
         margin = f"{row.support_margin:.3f}" if row.support_margin is not None else "-"
         lines.append(f"| {row.comparison_id} | `{row.decision_status}` | {label} | {margin} |")
         
+    # v0.19.3 Execution Config Section
+    if payload.execution_config:
+        cfg = payload.execution_config
+        lines.extend([
+            f"",
+            f"## Execution Rules (Contract)",
+            f"- Ranking Weights: overlap={cfg.ranking.overlap_weight}, concordance={cfg.ranking.concordance_weight}, correlation={cfg.ranking.correlation_weight}",
+            f"- Tie Tolerance: `{cfg.ranking.tie_tolerance}` (epsilon: `{cfg.ranking.exact_tie_epsilon}`)",
+            f"- Consensus Margin: `{cfg.consensus.consensus_margin_threshold}`",
+            f"- Minimum Evidence: `{cfg.consensus.minimum_supporting_references}` reference(s)"
+        ])
+
     # v0.19.1 Provenance Section
     lines.extend([
         f"",

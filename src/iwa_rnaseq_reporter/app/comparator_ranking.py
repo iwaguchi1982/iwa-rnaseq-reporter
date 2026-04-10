@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Tuple
 from .comparator_engine import ComparatorScoreSpec
 from .comparator_ranking_input import ComparatorNormalizedScoreSpec, ComparatorRankingInputContext
+from .comparator_execution_config import RankingConfigSpec, build_default_ranking_config
 
 @dataclass(frozen=True)
 class ComparatorIntegratedRankingScoreSpec:
@@ -70,3 +71,5 @@ class ComparatorRankingContext:
     top_rank_conflicts: Tuple[ComparatorTopRankConflictSpec, ...]
     issues: Tuple[ComparatorRankingIssueSpec, ...]
     summary: ComparatorRankingSummarySpec
+    # v0.19.3: Execution config contract
+    ranking_config: RankingConfigSpec = field(default_factory=RankingConfigSpec)

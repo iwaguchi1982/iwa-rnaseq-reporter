@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Optional, Tuple
-from .comparator_ranking import ComparatorRankingContext
+from .comparator_ranking import ComparatorRankingContext, ComparatorRankedReferenceSpec
+from .comparator_execution_config import ConsensusDecisionConfigSpec, build_default_consensus_decision_config
 
 @dataclass(frozen=True)
 class ConsensusSupportingReferenceSpec:
@@ -97,3 +98,5 @@ class ComparatorConsensusContext:
     evidence_profiles: Tuple[ConsensusEvidenceProfileSpec, ...]
     issues: Tuple[ComparatorConsensusIssueSpec, ...]
     summary: ComparatorConsensusSummarySpec
+    # v0.19.3: Execution config contract
+    consensus_config: ConsensusDecisionConfigSpec = field(default_factory=ConsensusDecisionConfigSpec)

@@ -12,60 +12,62 @@ from .comparator_ranking import (
     ComparatorRankingSummarySpec,
     ComparatorRankingContext
 )
+from .comparator_execution_config import RankingConfigSpec, build_default_ranking_config
 
 def compute_integrated_ranking_score(
     normalized_score: ComparatorNormalizedScoreSpec,
-    overlap_weight: float = 0.20,
-    top_n_overlap_weight: float = 0.30,
-    concordance_weight: float = 0.20,
-    correlation_weight: float = 0.30
+    config: Optional[RankingConfigSpec] = None
 ) -> ComparatorIntegratedRankingScoreSpec:
     """
-    Calculate a single weighted score from normalized components according to spec 6-1.
+    Calculate a single weighted score from normalized components according to execution config.
     """
-    # Defensive handling of None values (though rankable matches should have these keys)
+    cfg = config if config else build_default_ranking_config()
+    
+    # Defensive handling of None values
     o = normalized_score.overlap_score or 0.0
     tn = normalized_score.top_n_overlap_score or 0.0
     cn = normalized_score.concordance_score or 0.0
     cr = normalized_score.correlation_score or 0.0
     
     integrated = (
-        (o * overlap_weight) +
-        (tn * top_n_overlap_weight) +
-        (cn * concordance_weight) +
-        (cr * correlation_weight)
+        (o * cfg.overlap_weight) +
+        (tn * cfg.top_n_overlap_weight) +
+        (cn * cfg.concordance_weight) +
+        (cr * cfg.correlation_weight)
     )
     
     return ComparatorIntegratedRankingScoreSpec(
         integrated_score=integrated,
-        overlap_component=o * overlap_weight,
-        top_n_overlap_component=tn * top_n_overlap_weight,
-        concordance_component=cn * concordance_weight,
-        correlation_component=cr * correlation_weight
+        overlap_component=o * cfg.overlap_weight,
+        top_n_overlap_component=tn * cfg.top_n_overlap_weight,
+        concordance_component=cn * cfg.concordance_weight,
+        correlation_component=cr * cfg.correlation_weight
     )
 
 def rank_references_for_comparison(
     comparison_id: str,
     matches: Tuple[ComparatorRankableMatchSpec, ...],
-    tie_tolerance: float = 0.02
+    ranking_config: Optional[RankingConfigSpec] = None
 ) -> Tuple[Tuple[ComparatorRankedReferenceSpec, ...], Optional[ComparatorTopRankConflictSpec]]:
     """
-    Rank references for a single experimental comparison and detect top-rank conflicts.
+    Rank references for a single experimental comparison and detect top-rank conflicts using config.
     """
     if not matches:
         return (), None
     
+    cfg = ranking_config if ranking_config else build_default_ranking_config()
+    
     # 1. Compute Integrated Scores
     scored_items = []
     for m in matches:
-        int_score = compute_integrated_ranking_score(m.normalized_score)
+        int_score = compute_integrated_ranking_score(m.normalized_score, config=cfg)
         scored_items.append({
             "match": m,
             "int_score": int_score
         })
         
     # 2. Sort by Integrated Score (Primary) and Correlation (Secondary)
-    # Spec 7-2
+    # Refined logic from v0.18.x with config awareness
     scored_items.sort(
         key=lambda x: (
             x["int_score"].integrated_score,
@@ -92,10 +94,10 @@ def rank_references_for_comparison(
         if i == 0:
             flags.append("top_rank")
             is_at_top = True
-        elif abs(curr_score - top_score) < 1e-9: # Exact tie
+        elif abs(curr_score - top_score) < cfg.exact_tie_epsilon: # Configurable exact tie
             flags.append("tie_with_top")
             is_at_top = True
-        elif abs(curr_score - top_score) <= tie_tolerance:
+        elif abs(curr_score - top_score) <= cfg.tie_tolerance: # Configurable near tie
             flags.append("near_tie_with_top")
             is_at_top = True
             
@@ -131,11 +133,13 @@ def rank_references_for_comparison(
 
 def build_comparator_ranking_context(
     ranking_input_context: ComparatorRankingInputContext,
-    tie_tolerance: float = 0.02
+    ranking_config: Optional[RankingConfigSpec] = None
 ) -> ComparatorRankingContext:
     """
-    Orchestrate the ranking phase for the entire portfolio.
+    Orchestrate the ranking phase for the entire portfolio using the provided config.
     """
+    cfg = ranking_config if ranking_config else build_default_ranking_config()
+    
     # 1. Group by comparison_id
     grouped_matches: Dict[str, List[ComparatorRankableMatchSpec]] = {}
     for m in ranking_input_context.rankable_matches:
@@ -150,7 +154,7 @@ def build_comparator_ranking_context(
     ranked_comparison_ids = []
     
     for cid, matches in grouped_matches.items():
-        ranked, conflict = rank_references_for_comparison(cid, tuple(matches), tie_tolerance)
+        ranked, conflict = rank_references_for_comparison(cid, tuple(matches), ranking_config=cfg)
         all_ranked_refs.extend(ranked)
         if conflict:
             all_conflicts.append(conflict)
@@ -174,5 +178,6 @@ def build_comparator_ranking_context(
         ranked_references=tuple(all_ranked_refs),
         top_rank_conflicts=tuple(all_conflicts),
         issues=tuple(issues),
-        summary=summary
+        summary=summary,
+        ranking_config=cfg
     )

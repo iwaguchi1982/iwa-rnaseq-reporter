@@ -18,6 +18,20 @@ from iwa_rnaseq_reporter.app.comparator_consensus_handoff_builder import (
     build_consensus_handoff_payload,
     serialize_handoff_contract
 )
+from iwa_rnaseq_reporter.app.comparator_ranking import (
+    ComparatorRankingContext,
+    ComparatorRankingSummarySpec
+)
+from iwa_rnaseq_reporter.app.comparator_ranking_input import (
+    ComparatorRankingInputContext,
+    ComparatorRankingInputSummarySpec
+)
+
+def _create_real_ranking_ctx():
+    input_sum = ComparatorRankingInputSummarySpec(0, 0, 0, 0, False, True)
+    input_ctx = ComparatorRankingInputContext(MagicMock(), (), (), (), input_sum)
+    sum_out = ComparatorRankingSummarySpec(0, 0, 0, True)
+    return ComparatorRankingContext(input_ctx, (), (), (), sum_out)
 
 def test_build_export_payload_basics():
     # Use real dataclasses to avoid MagicMock serialization issues
@@ -39,7 +53,7 @@ def test_build_export_payload_basics():
     # because it won't be serialized in the payload's direct JSON calls in the test
     # (The payload only contains pieces of it)
     ctx = ComparatorConsensusContext(
-        ranking_context=MagicMock(),
+        ranking_context=_create_real_ranking_ctx(),
         decisions=(dec,),
         evidence_profiles=(prof,),
         issues=(),
@@ -53,7 +67,7 @@ def test_build_export_payload_basics():
     assert payload.manifest.n_consensus == 1
     assert payload.manifest.n_abstain == 5
     assert payload.manifest.schema_name == "ConsensusExportManifest"
-    assert payload.manifest.schema_version == "0.19.1"
+    assert payload.manifest.schema_version == "0.19.3"
     assert payload.manifest.generated_at is not None
     assert payload.manifest.provenance.producer_app == "iwa_rnaseq_reporter"
     assert payload.decision_rows[0].comparison_id == "c1"
@@ -64,7 +78,7 @@ def test_build_bundle_zip_contents():
     summary = ComparatorConsensusSummarySpec(1, 1, 0, 0, 0, True)
     
     ctx = ComparatorConsensusContext(
-        ranking_context=MagicMock(),
+        ranking_context=_create_real_ranking_ctx(),
         decisions=(dec,),
         evidence_profiles=(prof,),
         issues=(),
@@ -93,7 +107,7 @@ def test_handoff_contract_integrity():
     summary = ComparatorConsensusSummarySpec(1, 1, 0, 0, 0, True)
     
     ctx = ComparatorConsensusContext(
-        ranking_context=MagicMock(),
+        ranking_context=_create_real_ranking_ctx(),
         decisions=(dec,),
         evidence_profiles=(prof,),
         issues=(),

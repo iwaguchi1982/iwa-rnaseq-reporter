@@ -4,6 +4,7 @@ import datetime
 from typing import Tuple, Optional
 from .comparator_consensus import ComparatorConsensusContext
 from .comparator_consensus_export import ComparatorConsensusExportPayload, ProvenanceSpec
+from .comparator_execution_config import ComparatorExecutionConfigSpec
 from .comparator_consensus_handoff import (
     ComparatorConsensusBundleRefSpec,
     ComparatorConsensusComparisonRefSpec,
@@ -53,6 +54,13 @@ def build_consensus_handoff_payload(
         now = datetime.datetime.now(datetime.timezone.utc)
         gen_at = now.isoformat()
 
+    # v0.19.3: Coordinated Execution Config
+    exec_cfg = ComparatorExecutionConfigSpec(
+        ranking=context.ranking_context.ranking_config,
+        consensus=context.consensus_config,
+        config_source="context_injected"
+    )
+
     prov = ProvenanceSpec(
         producer_app="iwa_rnaseq_reporter",
         producer_version=get_package_version(),
@@ -67,7 +75,8 @@ def build_consensus_handoff_payload(
         comparison_decision_refs=tuple(comparison_refs),
         summary=context.summary,
         generated_at=gen_at,
-        provenance=prov
+        provenance=prov,
+        execution_config=exec_cfg
     )
 
 def serialize_handoff_contract(payload: ComparatorConsensusHandoffPayload) -> str:

@@ -84,7 +84,7 @@ def evaluate_consensus_bundle_contract(
         status = "unsupported_handoff_schema"
     elif not m_version or (handoff and not h_version):
         status = "missing_schema_version"
-    elif m_version != "0.19.1":
+    elif m_version not in ["0.19.1", "0.19.3"]:
         status = "version_mismatch"
         
     return ConsensusBundleContractInfo(
@@ -141,6 +141,56 @@ def _validate_provenance(
                 field_name=f"{obj_label}.provenance.{f}"
             ))
 
+def _validate_execution_config(
+    cfg: Any,
+    obj_label: str,
+    issues: List[ConsensusBundleValidationIssueSpec]
+):
+    """
+    Check the structure of the execution config container.
+    """
+    if not isinstance(cfg, dict):
+        issues.append(ConsensusBundleValidationIssueSpec(
+            "error", "invalid_execution_config_type", 
+            f"Execution config in {obj_label} must be a dictionary", 
+            field_name=f"{obj_label}.execution_config"
+        ))
+        return
+
+    # 1. Top-level fields
+    core_fields = ["config_name", "config_version", "ranking", "consensus"]
+    for f in core_fields:
+        if f not in cfg:
+            issues.append(ConsensusBundleValidationIssueSpec(
+                "error", "missing_config_field", 
+                f"Config field '{f}' is missing in {obj_label}.execution_config", 
+                field_name=f"{obj_label}.execution_config.{f}"
+            ))
+
+    # 2. Ranking block
+    if "ranking" in cfg and isinstance(cfg["ranking"], dict):
+        r = cfg["ranking"]
+        r_fields = ["overlap_weight", "concordance_weight", "correlation_weight", "tie_tolerance"]
+        for f in r_fields:
+            if f not in r:
+                issues.append(ConsensusBundleValidationIssueSpec(
+                    "error", "missing_ranking_field", 
+                    f"Ranking parameter '{f}' is missing", 
+                    field_name=f"{obj_label}.execution_config.ranking.{f}"
+                ))
+    
+    # 3. Consensus block
+    if "consensus" in cfg and isinstance(cfg["consensus"], dict):
+        c = cfg["consensus"]
+        c_fields = ["consensus_margin_threshold", "minimum_supporting_references", "weak_support_mean_threshold"]
+        for f in c_fields:
+            if f not in c:
+                issues.append(ConsensusBundleValidationIssueSpec(
+                    "error", "missing_consensus_field", 
+                    f"Consensus parameter '{f}' is missing", 
+                    field_name=f"{obj_label}.execution_config.consensus.{f}"
+                ))
+
 def validate_consensus_bundle(manifest_path_like: Any) -> ConsensusBundleValidationResult:
     """
     Exhaustively collect issues from the bundle components.
@@ -186,18 +236,24 @@ def validate_consensus_bundle(manifest_path_like: Any) -> ConsensusBundleValidat
     if manifest:
         _validate_required_fields(manifest, [
             "schema_name", "schema_version", "generated_at", "provenance", "consensus_run_id",
-            "n_ranked_comparisons", "n_consensus", "n_abstain", "n_no_consensus", "n_insufficient_evidence"
+            "n_ranked_comparisons", "n_consensus", "n_abstain", "n_no_consensus", "n_insufficient_evidence",
+            "execution_config"
         ], "manifest", issues)
         if "provenance" in manifest:
             _validate_provenance(manifest["provenance"], "manifest", issues)
+        if "execution_config" in manifest:
+            _validate_execution_config(manifest["execution_config"], "manifest", issues)
             
     if handoff:
         _validate_required_fields(handoff, [
             "schema_name", "schema_version", "generated_at", "provenance", "consensus_run_id",
-            "bundle_refs", "included_comparison_ids", "comparison_decision_refs", "summary"
+            "bundle_refs", "included_comparison_ids", "comparison_decision_refs", "summary",
+            "execution_config"
         ], "handoff", issues)
         if "provenance" in handoff:
             _validate_provenance(handoff["provenance"], "handoff", issues)
+        if "execution_config" in handoff:
+            _validate_execution_config(handoff["execution_config"], "handoff", issues)
 
     # 5. Artifact existence via Bundle Refs
     if handoff and "bundle_refs" in handoff:

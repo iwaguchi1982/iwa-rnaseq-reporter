@@ -6,6 +6,7 @@ from .comparator_consensus import (
     ComparatorConsensusIssueSpec,
     ComparatorConsensusSummarySpec
 )
+from .comparator_execution_config import ComparatorExecutionConfigSpec
 
 @dataclass(frozen=True)
 class ProvenanceSpec:
@@ -31,11 +32,13 @@ class ComparatorConsensusManifestSpec:
     n_abstain: int
     n_no_consensus: int
     n_insufficient_evidence: int
-    # Schema & Provenance (v0.19.1)
+    # Schema & Provenance (v0.19.1/v0.19.3)
     schema_name: str = "ConsensusExportManifest"
-    schema_version: str = "0.19.1"
+    schema_version: str = "0.19.3"
     generated_at: Optional[str] = None
     provenance: Optional[ProvenanceSpec] = None
+    # v0.19.3: Execution config contract
+    execution_config: Optional[ComparatorExecutionConfigSpec] = None
 
 @dataclass(frozen=True)
 class ComparatorConsensusDecisionRowSpec:
@@ -61,3 +64,5 @@ class ComparatorConsensusExportPayload:
     evidence_profiles: Tuple[ConsensusEvidenceProfileSpec, ...]
     issues: Tuple[ComparatorConsensusIssueSpec, ...]
     summary: ComparatorConsensusSummarySpec
+    # v0.19.3
+    execution_config: Optional[ComparatorExecutionConfigSpec] = None

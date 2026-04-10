@@ -15,9 +15,15 @@ def _create_minimal_valid_files(root: Path):
     handoff_path = root / "consensus_handoff_contract.json"
     csv_path = root / "consensus_decisions.csv"
     
+    exec_cfg = {
+        "config_name": "TestConfig", "config_version": "v1", 
+        "ranking": {"overlap_weight": 0.2, "concordance_weight": 0.2, "correlation_weight": 0.3, "tie_tolerance": 0.02}, 
+        "consensus": {"consensus_margin_threshold": 0.05, "minimum_supporting_references": 1, "weak_support_mean_threshold": 0.3}
+    }
+
     manifest = {
         "schema_name": EXPECTED_MANIFEST_SCHEMA,
-        "schema_version": "0.19.1",
+        "schema_version": "0.19.3",
         "generated_at": "2026-04-10T12:00:00Z",
         "consensus_run_id": "run1",
         "n_ranked_comparisons": 1,
@@ -29,12 +35,13 @@ def _create_minimal_valid_files(root: Path):
             "producer_app": "iwa_rnaseq_reporter",
             "producer_version": "0.3.0",
             "source_consensus_run_id": "run1"
-        }
+        },
+        "execution_config": exec_cfg
     }
     
     handoff = {
         "schema_name": "ConsensusHandoffContract",
-        "schema_version": "0.19.1",
+        "schema_version": "0.19.3",
         "generated_at": "2026-04-10T12:00:00Z",
         "consensus_run_id": "run1",
         "bundle_refs": {
@@ -51,7 +58,8 @@ def _create_minimal_valid_files(root: Path):
             "producer_app": "iwa_rnaseq_reporter",
             "producer_version": "0.3.0",
             "source_consensus_run_id": "run1"
-        }
+        },
+        "execution_config": exec_cfg
     }
     
     with open(manifest_path, "w") as f:
@@ -142,11 +150,12 @@ def test_validate_handoff_requirements():
         
         manifest = {
             "schema_name": EXPECTED_MANIFEST_SCHEMA,
-            "schema_version": "0.19.1",
+            "schema_version": "0.19.3",
             "generated_at": "2026-04-10T12:00:00Z",
             "consensus_run_id": "r1",
             "n_ranked_comparisons": 0, "n_consensus": 0, "n_abstain": 0, "n_no_consensus": 0, "n_insufficient_evidence": 0,
-            "provenance": {"producer_app": "a", "producer_version": "v1", "source_consensus_run_id": "r1"}
+            "provenance": {"producer_app": "a", "producer_version": "v1", "source_consensus_run_id": "r1"},
+            "execution_config": {"config_name": "a", "config_version": "v1", "ranking": {"overlap_weight": 0.2, "concordance_weight": 0.2, "correlation_weight": 0.3, "tie_tolerance": 0.02}, "consensus": {"consensus_margin_threshold": 0.05, "minimum_supporting_references": 1, "weak_support_mean_threshold": 0.3}}
         }
         with open(manifest_path, "w") as f:
             json.dump(manifest, f)

@@ -7,6 +7,7 @@ from iwa_rnaseq_reporter.app.comparator_ranking_input import (
     ComparatorRankingInputContext,
     ComparatorRankingInputSummarySpec
 )
+from iwa_rnaseq_reporter.app.comparator_execution_config import RankingConfigSpec
 from iwa_rnaseq_reporter.app.comparator_ranking_builder import (
     compute_integrated_ranking_score,
     rank_references_for_comparison,
@@ -63,7 +64,7 @@ def test_near_tie_conflict_detection():
     # diff < 0.02
     m2 = _create_mock_match("c1", "ds2", ComparatorNormalizedScoreSpec(0.5, 0.5, 0.5, 0.46))
     
-    ranked, conflict = rank_references_for_comparison("c1", (m1, m2), tie_tolerance=0.02)
+    ranked, conflict = rank_references_for_comparison("c1", (m1, m2), ranking_config=RankingConfigSpec(tie_tolerance=0.02))
     
     assert conflict is not None
     assert "near_tie_at_top" in conflict.reason_codes
