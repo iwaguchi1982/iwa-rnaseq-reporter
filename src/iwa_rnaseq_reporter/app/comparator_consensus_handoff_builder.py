@@ -1,13 +1,15 @@
 import json
 import dataclasses
+import datetime
 from typing import Tuple
 from .comparator_consensus import ComparatorConsensusContext
-from .comparator_consensus_export import ComparatorConsensusExportPayload
+from .comparator_consensus_export import ComparatorConsensusExportPayload, ProvenanceSpec
 from .comparator_consensus_handoff import (
     ComparatorConsensusBundleRefSpec,
     ComparatorConsensusComparisonRefSpec,
     ComparatorConsensusHandoffPayload
 )
+from .version_helper import get_package_version
 
 def build_consensus_handoff_payload(
     context: ComparatorConsensusContext,
@@ -44,13 +46,24 @@ def build_consensus_handoff_payload(
         for d in context.decisions
     ]
     
+    # v0.19.1 Provenance
+    now = datetime.datetime.now(datetime.timezone.utc)
+    gen_at = now.isoformat()
+    prov = ProvenanceSpec(
+        producer_app="iwa_rnaseq_reporter",
+        producer_version=get_package_version(),
+        source_consensus_run_id=export_payload.manifest.consensus_run_id
+    )
+
     return ComparatorConsensusHandoffPayload(
         consensus_run_id=export_payload.manifest.consensus_run_id,
         bundle_refs=bundle_refs,
         included_comparison_ids=tuple(d.comparison_id for d in context.decisions),
         decided_label_keys=tuple(decided_labels),
         comparison_decision_refs=tuple(comparison_refs),
-        summary=context.summary
+        summary=context.summary,
+        generated_at=gen_at,
+        provenance=prov
     )
 
 def serialize_handoff_contract(payload: ComparatorConsensusHandoffPayload) -> str:

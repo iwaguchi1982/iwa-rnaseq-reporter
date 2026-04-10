@@ -52,6 +52,10 @@ def test_build_export_payload_basics():
     assert payload.manifest.consensus_run_id == run_id
     assert payload.manifest.n_consensus == 1
     assert payload.manifest.n_abstain == 5
+    assert payload.manifest.schema_name == "ConsensusExportManifest"
+    assert payload.manifest.schema_version == "0.19.1"
+    assert payload.manifest.generated_at is not None
+    assert payload.manifest.provenance.producer_app == "iwa_rnaseq_reporter"
     assert payload.decision_rows[0].comparison_id == "c1"
 
 def test_build_bundle_zip_contents():
@@ -77,6 +81,11 @@ def test_build_bundle_zip_contents():
         assert "consensus_manifest.json" in file_list
         assert "consensus_decisions.json" in file_list
         assert "consensus_decisions.csv" in file_list
+        
+        # Verify JSON content (light check)
+        manifest_data = json.loads(zf.read("consensus_manifest.json"))
+        assert manifest_data["schema_name"] == "ConsensusExportManifest"
+        assert manifest_data["provenance"]["producer_app"] == "iwa_rnaseq_reporter"
 
 def test_handoff_contract_integrity():
     dec = ConsensusDecisionSpec("c1", "consensus", "TUMOR", "Tumor", ())
@@ -95,4 +104,7 @@ def test_handoff_contract_integrity():
     handoff = build_consensus_handoff_payload(ctx, payload, "test_bundle.zip")
     
     assert handoff.consensus_run_id == "test_run"
+    assert handoff.schema_name == "ConsensusHandoffContract"
+    assert handoff.generated_at is not None
+    assert handoff.provenance.source_consensus_run_id == "test_run"
     assert "TUMOR" in handoff.decided_label_keys

@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Optional, Tuple
 from .comparator_consensus import ComparatorConsensusSummarySpec
+from .comparator_consensus_export import ProvenanceSpec
 
 @dataclass(frozen=True)
 class ComparatorConsensusBundleRefSpec:
@@ -36,3 +37,8 @@ class ComparatorConsensusHandoffPayload:
     decided_label_keys: Tuple[str, ...]
     comparison_decision_refs: Tuple[ComparatorConsensusComparisonRefSpec, ...]
     summary: ComparatorConsensusSummarySpec
+    # Schema & Provenance (v0.19.1)
+    schema_name: str = "ConsensusHandoffContract"
+    schema_version: str = "0.19.1"
+    generated_at: Optional[str] = None
+    provenance: Optional[ProvenanceSpec] = None

@@ -8,8 +8,10 @@ from .comparator_consensus import ComparatorConsensusContext
 from .comparator_consensus_export import (
     ComparatorConsensusManifestSpec,
     ComparatorConsensusDecisionRowSpec,
-    ComparatorConsensusExportPayload
+    ComparatorConsensusExportPayload,
+    ProvenanceSpec
 )
+from .version_helper import get_package_version
 
 def build_consensus_run_id() -> str:
     """
@@ -47,13 +49,24 @@ def build_consensus_export_payload(
     """
     Gather all data needed for serialization into the bundle.
     """
+    # v0.19.1 Provenance
+    now = datetime.datetime.now(datetime.timezone.utc)
+    gen_at = now.isoformat()
+    prov = ProvenanceSpec(
+        producer_app="iwa_rnaseq_reporter",
+        producer_version=get_package_version(),
+        source_consensus_run_id=run_id
+    )
+
     manifest = ComparatorConsensusManifestSpec(
         consensus_run_id=run_id,
         n_ranked_comparisons=context.summary.n_ranked_comparisons,
         n_consensus=context.summary.n_consensus,
         n_abstain=context.summary.n_abstain,
         n_no_consensus=context.summary.n_no_consensus,
-        n_insufficient_evidence=context.summary.n_insufficient_evidence
+        n_insufficient_evidence=context.summary.n_insufficient_evidence,
+        generated_at=gen_at,
+        provenance=prov
     )
     
     return ComparatorConsensusExportPayload(
@@ -91,6 +104,17 @@ def build_consensus_report_summary_md(
         label = row.decided_label_display if row.decided_label_display else "-"
         margin = f"{row.support_margin:.3f}" if row.support_margin is not None else "-"
         lines.append(f"| {row.comparison_id} | `{row.decision_status}` | {label} | {margin} |")
+        
+    # v0.19.1 Provenance Section
+    lines.extend([
+        f"",
+        f"---",
+        f"**Data Provenance**",
+        f"- Schema Version: `{payload.manifest.schema_version}`",
+        f"- Generated At: {payload.manifest.generated_at}",
+        f"- Producer: `{payload.manifest.provenance.producer_app} (v{payload.manifest.provenance.producer_version})`",
+        f"- Consensus Run ID: `{payload.manifest.provenance.source_consensus_run_id}`"
+    ])
         
     return "\n".join(lines)
 
