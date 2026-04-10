@@ -24,6 +24,10 @@ class DegHandoffIdentitySpec:
     group_a: str
     group_b: str
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "DegHandoffIdentitySpec":
+        return cls(**data)
+
 @dataclass(frozen=True)
 class DegHandoffDataRefSpec:
     """
@@ -36,6 +40,10 @@ class DegHandoffDataRefSpec:
     summary_metrics_filename: str = "summary_metrics.json"
     report_summary_filename: str = "report_summary.md"
     handoff_contract_filename: str = "handoff_contract.json"
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "DegHandoffDataRefSpec":
+        return cls(**data)
 
 @dataclass(frozen=True)
 class DegHandoffPayload:
@@ -51,3 +59,15 @@ class DegHandoffPayload:
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "DegHandoffPayload":
+        identity = DegHandoffIdentitySpec.from_dict(data["identity"])
+        artifact_refs = DegHandoffDataRefSpec.from_dict(data["artifact_refs"])
+        return cls(
+            identity=identity,
+            analysis_metadata=data["analysis_metadata"],
+            artifact_refs=artifact_refs,
+            summary_metrics=data["summary_metrics"],
+            feature_id_system=data.get("feature_id_system")
+        )

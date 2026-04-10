@@ -11,6 +11,10 @@ class ComparisonPortfolioBundleRefSpec:
     comparison_index_path: str = "comparison_index.json"
     portfolio_handoff_contract_path: str = "portfolio_handoff_contract.json"
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ComparisonPortfolioBundleRefSpec":
+        return cls(**data)
+
 
 @dataclass(frozen=True)
 class ComparisonPortfolioIncludedComparisonRefSpec:
@@ -25,6 +29,10 @@ class ComparisonPortfolioIncludedComparisonRefSpec:
     comparison_summary_path: str
     summary_metrics_path: str
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ComparisonPortfolioIncludedComparisonRefSpec":
+        return cls(**data)
+
 
 @dataclass(frozen=True)
 class ComparisonPortfolioFeatureIdSystemSummarySpec:
@@ -35,6 +43,10 @@ class ComparisonPortfolioFeatureIdSystemSummarySpec:
     feature_id_systems: List[str]
     is_mixed: bool
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ComparisonPortfolioFeatureIdSystemSummarySpec":
+        return cls(**data)
+
 
 @dataclass(frozen=True)
 class ComparisonPortfolioSharedAnalysisConstraintsSpec:
@@ -43,6 +55,10 @@ class ComparisonPortfolioSharedAnalysisConstraintsSpec:
     """
     matrix_kinds: List[str]
     n_comparisons: int
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ComparisonPortfolioSharedAnalysisConstraintsSpec":
+        return cls(**data)
 
 
 @dataclass(frozen=True)
@@ -60,3 +76,23 @@ class ComparisonPortfolioHandoffPayload:
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ComparisonPortfolioHandoffPayload":
+        bundle_refs = ComparisonPortfolioBundleRefSpec.from_dict(data["bundle_refs"])
+        included_comps = [
+            ComparisonPortfolioIncludedComparisonRefSpec.from_dict(c) 
+            for c in data["included_comparisons"]
+        ]
+        id_summary = ComparisonPortfolioFeatureIdSystemSummarySpec.from_dict(data["feature_id_system_summary"])
+        constraints = ComparisonPortfolioSharedAnalysisConstraintsSpec.from_dict(data["shared_analysis_constraints"])
+        
+        return cls(
+            portfolio_id=data["portfolio_id"],
+            included_comparison_ids=data["included_comparison_ids"],
+            bundle_refs=bundle_refs,
+            included_comparisons=included_comps,
+            feature_id_system_summary=id_summary,
+            matrix_kinds=data["matrix_kinds"],
+            shared_analysis_constraints=constraints
+        )
