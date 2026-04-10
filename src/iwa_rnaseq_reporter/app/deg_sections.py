@@ -29,6 +29,10 @@ from iwa_rnaseq_reporter.app.deg_export_bundle import (
     build_deg_export_bundle_filename
 )
 from iwa_rnaseq_reporter.app.deg_handoff_builder import build_deg_handoff_payload
+from iwa_rnaseq_reporter.app.comparison_portfolio_builder import (
+    build_comparison_record,
+    upsert_comparison_record
+)
 
 
 def render_deg_comparison_design_section(
@@ -300,7 +304,16 @@ def render_deg_analysis_section(
                 # Build handoff payload for UI preview
                 handoff_payload = build_deg_handoff_payload(export_payload, zip_filename)
 
+                # v0.16.1: Regsiter to portfolio
+                record = build_comparison_record(context, export_payload, handoff_payload, zip_filename)
+                st.session_state["comparison_portfolio_context"] = upsert_comparison_record(
+                    st.session_state["comparison_portfolio_context"],
+                    record
+                )
+
                 st.write("### エクスポート")
+                portfolio_count = st.session_state["comparison_portfolio_context"].count
+                st.success(f"✅ 解析結果をポートフォリオに登録しました（現在 {portfolio_count} 件）")
                 st.info("解析結果、比較条件、実行メタデータをまとめた一式をダウンロードできます（推奨）。")
                 
                 e1, e2 = st.columns(2)

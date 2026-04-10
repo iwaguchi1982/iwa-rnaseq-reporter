@@ -1,49 +1,51 @@
-# Walkthrough: v0.15.4 downstream handoff contract の整備
+# Walkthrough: v0.16.1 Comparison Registry / Portfolio Context の導入
 
-v0.15 シリーズの完結編として、解析成果物（Bundle）を後続の解析・自動化ツール（Comparator, Signature Scorer 等）へ渡すための正式な「受け渡し契約」である `DegHandoffPayload` を導入しました。これにより、後続プロセスは Bundle 内のファイル構成や解析条件を機械的に判別し、一貫した処理を行うことが可能になります。
+v0.16 マイルストンの第一段階として、セッション内で複数の DEG 解析結果を識別・保持するための「Comparison Registry（ポートフォリオ）」基盤を導入しました。これにより、ユーザーは同一セッション内で複数のグループ比較（例: A vs B と A vs C）を実行し、それらを蓄積して将来的な一括処理や比較統合に活用できるようになります。
 
 ## 実施した変更
 
-### 1. Downstream Handoff Contract の定義
-- **[deg_handoff_contract.py](file:///home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_reporter/src/iwa_rnaseq_reporter/app/deg_handoff_contract.py)**: 後続処理用のデータ契約を定義しました。
-  - `comparison_id`: 比較条件 (`matrix_kind`, `group_a`, `group_b`, `comparison_column`) から決定的（Deterministic）に生成される、一意かつ人可読な ID。
-  - `artifact_refs`: Bundle 内の各ファイルへの公式な参照マップ。
-  - `analysis_metadata`: 解析時に使用された各種パラメータのスナップショット。
+### 1. ポートフォリオ・データモデルの実装
+- **[comparison_portfolio_context.py](file:///home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_reporter/src/iwa_rnaseq_reporter/app/comparison_portfolio_context.py)**: 複数比較を管理するためのイミュータブルなコンテナを定義しました。
+  - `ComparisonRecord`: ID, Label, ExportPayload, HandoffPayload, SummaryMetrics 等を束ねるレコード単位。
+  - `ComparisonPortfolioContext`: セッション内のレコード一覧を保持。
 
-### 2. Handoff Builder の実装
-- **[deg_handoff_builder.py](file:///home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_reporter/src/iwa_rnaseq_reporter/app/deg_handoff_builder.py)**: `DegExportPayload` から契約情報を抽出・変換する純粋関数を実装しました。
+### 2. ポートフォリオ・管理ロジックの実装
+- **[comparison_portfolio_builder.py](file:///home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_reporter/src/iwa_rnaseq_reporter/app/comparison_portfolio_builder.py)**: レコードの構築と、ポートフォリオへの登録（Upsert）を行う純粋関数を実装しました。
+  - `comparison_id` に基づく決定的な置換ロジックを確立。再解析時に重複せず最新の結果が保持されます。
 
-### 3. ZIP Bundle への自動同梱
-- **[deg_export_bundle.py](file:///home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_reporter/src/iwa_rnaseq_reporter/app/deg_export_bundle.py)**: `v0.15.3` で作成した ZIP アーカイブ生成ロジックを拡張し、`handoff_contract.json` を自動的に同梱するようにしました。
-
-### 4. UI Preview の強化
-- **[deg_sections.py](file:///home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_reporter/src/iwa_rnaseq_reporter/app/deg_sections.py)**: エクスポートセクションに「Handoff Contract」タブを追加し、下流へ渡されるメタデータの内容を事前に確認できるようにしました。
+### 3. App への統合
+- **[app.py](file:///home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_reporter/app.py)**: `st.session_state` へのポートフォリオ初期化処理を追加しました。
+- **[deg_sections.py](file:///home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_reporter/src/iwa_rnaseq_reporter/app/deg_sections.py)**: Section 14 での解析確定時に、自動的にポートフォリオへ登録する処理と、登録状況を表示するステータス表示を追加しました。
 
 ## 検証結果
 
 ### 自動テスト
-ID 生成の決定的動作、Builder のマッピング、および ZIP への同梱を検証する新規テストを含む、全 62 件のテストがパスしました。
+レコード構築、デターミニスティックな Upsert 動作を検証する新規テストを含む、全 68 件のテストがパスしました。
 
 ```bash
 # 実行コマンド
 PYTHONPATH=src:../iwa_rnaseq_counter/src:. pixi run python -m pytest tests/app tests/integration tests/io -q
 ```
 
-**結果:** `62 passed`
+**結果:** `68 passed`
 
 ### 動作確認
-- 解析実行後、ZIP バンドル内に `handoff_contract.json` が含まれ、その中の `comparison_id` が期待通りの命名規則（例: `condition__Treatment__vs__Control__gene_tpm`）になっていることを確認しました。
+- 複数のグループ比較を実行するたびに、ポートフォリオ件数が増加することを確認。
+- 同一の比較条件で解析をやり直した際、件数が増えず（Upsert）、ポートフォリオ内のデータが更新されることを理論的に保証。
 
 ## 完了報告
-タスク名: v0.15.4 downstream handoff contract の整備
+タスク名: v0.16.1 Comparison Registry / Portfolio Context の導入
 変更ファイル: 
-- `src/iwa_rnaseq_reporter/app/deg_handoff_contract.py`
-- `src/iwa_rnaseq_reporter/app/deg_handoff_builder.py`
-- `src/iwa_rnaseq_reporter/app/deg_export_bundle.py`
+- `src/iwa_rnaseq_reporter/app/comparison_portfolio_context.py`
+- `src/iwa_rnaseq_reporter/app/comparison_portfolio_builder.py`
+- `app.py`
 - `src/iwa_rnaseq_reporter/app/deg_sections.py`
-実装要約: 後続ツールとのインターフェースとなるデータ契約を定義し、Bundle への同梱と UI プレビューを実現しました。
-非変更範囲: 基礎となる `DegResultContext` および統計計算ロジック。
-テスト結果: 62 passed。
+実装要約: セッション内で解析結果を蓄積するための型安全なポートフォリオ基盤を構築し、UI フローに統合しました。
+非変更範囲: 
+- `comparator`, `signature scorer`, `report automation`（次以降のマイルストン）
+- `PCA`, `Correlation` 等の既存解析ロジック
+- `DB / API` 永続化
+テスト結果: 68 passed。
 done 判定: Yes
 
-次の一手: v0.15 シリーズはこれにて完遂です。**v0.15-done** 判定をいただき次第、v0.16 にて複数の比較を統合・管理し、上位の解析（Comparator 等）を行うためのオーケストレーション層の開発に進みます。
+次の一手: v0.16.2 にて、このポートフォリオに蓄積された複数の比較結果を一覧表示する **Summary Table View** の実装に進みます。

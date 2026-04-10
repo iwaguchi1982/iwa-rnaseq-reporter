@@ -46,9 +46,14 @@ from iwa_rnaseq_reporter.app.analysis_sections import (
     render_gene_search_section,
     render_top_variable_features_section,
 )
+from iwa_rnaseq_reporter.app.comparison_portfolio_builder import build_empty_comparison_portfolio_context
 
 st.set_page_config(page_title="iwa-rnaseq-reporter", layout="wide")
 st.title("iwa-rnaseq-reporter")
+
+# v0.16.1: Initialize comparison portfolio context
+if "comparison_portfolio_context" not in st.session_state:
+    st.session_state["comparison_portfolio_context"] = build_empty_comparison_portfolio_context()
 
 
 def reorder_metadata_columns(df: pd.DataFrame) -> pd.DataFrame:
