@@ -39,6 +39,10 @@ from iwa_rnaseq_reporter.app.comparison_portfolio_summary import (
     build_comparison_portfolio_summary_rows,
     build_comparison_portfolio_summary_dataframe
 )
+from iwa_rnaseq_reporter.app.comparison_portfolio_export_builder import (
+    build_comparison_portfolio_export_bundle,
+    build_comparison_portfolio_bundle_filename
+)
 
 
 def render_deg_comparison_design_section(
@@ -401,5 +405,40 @@ def render_comparison_portfolio_section():
         
         with st.expander("Show Detailed Metrics & Metadata", expanded=False):
             st.json(record.handoff_payload.to_dict())
+
+    # 3. Portfolio Export Bundle (v0.16.3)
+    st.subheader("ポートフォリオのエクスポート")
+    st.info("蓄積された全ての比較結果を一つの成果物（Portfolio Bundle）としてエクスポートできます。")
+    
+    portfolio_zip_filename = build_comparison_portfolio_bundle_filename(portfolio)
+    
+    try:
+        portfolio_zip_bytes = build_comparison_portfolio_export_bundle(portfolio)
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            st.download_button(
+                label="Download Portfolio Bundle (ZIP)",
+                data=portfolio_zip_bytes,
+                file_name=portfolio_zip_filename,
+                mime="application/zip",
+                key="download_portfolio_bundle"
+            )
+        with c2:
+            st.write(f"**Bundle Filename:** `{portfolio_zip_filename}`")
+            st.caption("Contents: manifest.json, index.json, per-comparison handoff/summary/metrics")
+            
+        with st.expander("Explore Bundle Structure Preview", expanded=False):
+            st.code(f"""
+{portfolio_zip_filename}
+├── portfolio_manifest.json
+├── comparison_index.json
+└── comparisons/
+    {"".join([f"├── {cid}/" for cid in portfolio.comparison_ids[:3]])}
+    { "..." if portfolio.count > 3 else ""}
+            """, language="text")
+
+    except Exception as e:
+        st.error(f"Failed to prepare portfolio export: {e}")
     else:
         st.info("Build a valid comparison design to run DEG analysis.")

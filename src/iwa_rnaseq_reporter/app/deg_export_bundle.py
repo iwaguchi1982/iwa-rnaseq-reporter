@@ -53,12 +53,12 @@ def build_deg_export_bundle(payload: DegExportPayload, bundle_filename: Optional
         )
         
         # 4. Report Summary (Markdown)
-        report_text = _build_report_summary_md(payload)
+        report_text = build_deg_report_summary_md(payload)
         zf.writestr("report_summary.md", report_text)
         
     return buf.getvalue()
 
-def _build_report_summary_md(payload: DegExportPayload) -> str:
+def build_deg_report_summary_md(payload: DegExportPayload) -> str:
     """
     Internal helper to build a human-readable report summary.
     """
