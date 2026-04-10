@@ -9,7 +9,9 @@ __pycache__/
 .ruff_cache/
 .vscode/
 .idea/
+.dev_memo/
 .DS_Store
+dev_memo/
 
 run_results/
 results/
