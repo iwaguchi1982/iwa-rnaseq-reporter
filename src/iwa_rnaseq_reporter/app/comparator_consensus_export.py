@@ -15,6 +15,7 @@ class ComparatorConsensusManifestSpec:
     consensus_run_id: str
     n_ranked_comparisons: int
     n_consensus: int
+    n_abstain: int
     n_no_consensus: int
     n_insufficient_evidence: int
 

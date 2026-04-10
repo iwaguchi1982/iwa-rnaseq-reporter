@@ -33,7 +33,7 @@ def test_build_export_payload_basics():
         has_weak_support=False
     )
     
-    summary = ComparatorConsensusSummarySpec(1, 1, 0, 0, 0, True)
+    summary = ComparatorConsensusSummarySpec(1, 1, 5, 0, 0, True)
     
     # rank_ctx is needed for ComparatorConsensusContext, use a dummy or mock
     # because it won't be serialized in the payload's direct JSON calls in the test
@@ -51,6 +51,7 @@ def test_build_export_payload_basics():
     
     assert payload.manifest.consensus_run_id == run_id
     assert payload.manifest.n_consensus == 1
+    assert payload.manifest.n_abstain == 5
     assert payload.decision_rows[0].comparison_id == "c1"
 
 def test_build_bundle_zip_contents():

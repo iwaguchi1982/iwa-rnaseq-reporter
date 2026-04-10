@@ -51,6 +51,7 @@ def build_consensus_export_payload(
         consensus_run_id=run_id,
         n_ranked_comparisons=context.summary.n_ranked_comparisons,
         n_consensus=context.summary.n_consensus,
+        n_abstain=context.summary.n_abstain,
         n_no_consensus=context.summary.n_no_consensus,
         n_insufficient_evidence=context.summary.n_insufficient_evidence
     )
