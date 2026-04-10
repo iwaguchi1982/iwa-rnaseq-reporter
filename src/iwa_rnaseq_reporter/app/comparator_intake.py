@@ -16,6 +16,7 @@ class ComparatorAcceptedComparisonRefSpec:
     matrix_kind: str
     feature_id_system: str
     handoff_contract_path: str
+    species: Optional[str] = None
 
 @dataclass(frozen=True)
 class ComparatorRejectedComparisonRefSpec:
@@ -24,6 +25,7 @@ class ComparatorRejectedComparisonRefSpec:
     matrix_kind: Optional[str]
     feature_id_system: Optional[str]
     handoff_contract_path: Optional[str]
+    species: Optional[str] = None
     rejection_codes: Tuple[str, ...] = field(default_factory=tuple)
 
 @dataclass(frozen=True)
