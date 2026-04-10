@@ -158,7 +158,7 @@ def _validate_execution_config(
         return
 
     # 1. Top-level fields
-    core_fields = ["config_name", "config_version", "ranking", "consensus"]
+    core_fields = ["config_name", "config_version", "config_source", "ranking", "consensus"]
     for f in core_fields:
         if f not in cfg:
             issues.append(ConsensusBundleValidationIssueSpec(
@@ -170,7 +170,10 @@ def _validate_execution_config(
     # 2. Ranking block
     if "ranking" in cfg and isinstance(cfg["ranking"], dict):
         r = cfg["ranking"]
-        r_fields = ["overlap_weight", "concordance_weight", "correlation_weight", "tie_tolerance"]
+        r_fields = [
+            "overlap_weight", "top_n_overlap_weight", "concordance_weight", 
+            "correlation_weight", "tie_tolerance", "exact_tie_epsilon"
+        ]
         for f in r_fields:
             if f not in r:
                 issues.append(ConsensusBundleValidationIssueSpec(
@@ -182,7 +185,11 @@ def _validate_execution_config(
     # 3. Consensus block
     if "consensus" in cfg and isinstance(cfg["consensus"], dict):
         c = cfg["consensus"]
-        c_fields = ["consensus_margin_threshold", "minimum_supporting_references", "weak_support_mean_threshold"]
+        c_fields = [
+            "candidate_sort_policy", "consensus_margin_threshold", "minimum_supporting_references", 
+            "weak_support_mean_threshold", "top_rank_conflict_policy", "weak_margin_policy", 
+            "insufficient_support_policy"
+        ]
         for f in c_fields:
             if f not in c:
                 issues.append(ConsensusBundleValidationIssueSpec(

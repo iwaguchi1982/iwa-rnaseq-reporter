@@ -16,9 +16,16 @@ def _create_minimal_valid_files(root: Path):
     csv_path = root / "consensus_decisions.csv"
     
     exec_cfg = {
-        "config_name": "TestConfig", "config_version": "v1", 
-        "ranking": {"overlap_weight": 0.2, "concordance_weight": 0.2, "correlation_weight": 0.3, "tie_tolerance": 0.02}, 
-        "consensus": {"consensus_margin_threshold": 0.05, "minimum_supporting_references": 1, "weak_support_mean_threshold": 0.3}
+        "config_name": "TestConfig", "config_version": "v1", "config_source": "test_injector",
+        "ranking": {
+            "overlap_weight": 0.2, "top_n_overlap_weight": 0.3, "concordance_weight": 0.2, 
+            "correlation_weight": 0.3, "tie_tolerance": 0.02, "exact_tie_epsilon": 0.001
+        }, 
+        "consensus": {
+            "consensus_margin_threshold": 0.05, "minimum_supporting_references": 1, "weak_support_mean_threshold": 0.3,
+            "candidate_sort_policy": "weighted_score", "top_rank_conflict_policy": "no_consensus",
+            "weak_margin_policy": "no_consensus", "insufficient_support_policy": "insufficient_evidence"
+        }
     }
 
     manifest = {
@@ -155,7 +162,18 @@ def test_validate_handoff_requirements():
             "consensus_run_id": "r1",
             "n_ranked_comparisons": 0, "n_consensus": 0, "n_abstain": 0, "n_no_consensus": 0, "n_insufficient_evidence": 0,
             "provenance": {"producer_app": "a", "producer_version": "v1", "source_consensus_run_id": "r1"},
-            "execution_config": {"config_name": "a", "config_version": "v1", "ranking": {"overlap_weight": 0.2, "concordance_weight": 0.2, "correlation_weight": 0.3, "tie_tolerance": 0.02}, "consensus": {"consensus_margin_threshold": 0.05, "minimum_supporting_references": 1, "weak_support_mean_threshold": 0.3}}
+            "execution_config": {
+                "config_name": "a", "config_version": "v1", "config_source": "b",
+                "ranking": {
+                    "overlap_weight": 0.2, "top_n_overlap_weight": 0.3, "concordance_weight": 0.2, 
+                    "correlation_weight": 0.3, "tie_tolerance": 0.02, "exact_tie_epsilon": 0.001
+                }, 
+                "consensus": {
+                    "consensus_margin_threshold": 0.05, "minimum_supporting_references": 1, "weak_support_mean_threshold": 0.3,
+                    "candidate_sort_policy": "weighted_score", "top_rank_conflict_policy": "no_consensus",
+                    "weak_margin_policy": "no_consensus", "insufficient_support_policy": "insufficient_evidence"
+                }
+            }
         }
         with open(manifest_path, "w") as f:
             json.dump(manifest, f)

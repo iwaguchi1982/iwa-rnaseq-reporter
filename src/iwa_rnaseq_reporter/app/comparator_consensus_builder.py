@@ -174,7 +174,7 @@ def build_consensus_decision(
     top = evidence_profile.top_candidate
     
     if not top:
-        return ConsensusDecisionSpec(cid, cfg.insufficient_support_policy, None, None, ("no_ranked_matches",))
+        return ConsensusDecisionSpec(cid, "insufficient_evidence", None, None, ("no_ranked_matches",))
         
     reasons = []
     status = "consensus"
@@ -182,20 +182,21 @@ def build_consensus_decision(
     # 1. Check for Top-Rank Conflict (from Ranking phase)
     if has_top_rank_conflict:
         reasons.append("top_rank_conflict_present")
-        status = cfg.top_rank_conflict_policy
+        status = "no_consensus"
         
     # 2. Check Margin
     if evidence_profile.support_margin is not None:
         if evidence_profile.support_margin < cfg.consensus_margin_threshold:
             reasons.append("weak_support_margin")
-            status = cfg.weak_margin_policy
+            status = "no_consensus"
             
     # 3. Check Evidence Volume
     if top.n_supporting_references < cfg.minimum_supporting_references:
         reasons.append("insufficient_supporting_references")
-        status = cfg.insufficient_support_policy
+        status = "insufficient_evidence"
 
     # Final mapping
+    # Note: policy strings in 'cfg' are descriptive metadata and do not drive status values in v0.19.3a.
     decided_lk = top.label_key if status == "consensus" else None
     decided_ld = top.label_display if status == "consensus" else None
     
