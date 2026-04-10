@@ -41,7 +41,11 @@ from iwa_rnaseq_reporter.app.comparison_portfolio_summary import (
 )
 from iwa_rnaseq_reporter.app.comparison_portfolio_export_builder import (
     build_comparison_portfolio_export_bundle,
-    build_comparison_portfolio_bundle_filename
+    build_comparison_portfolio_bundle_filename,
+    build_comparison_portfolio_export_payload
+)
+from iwa_rnaseq_reporter.app.comparison_portfolio_handoff_builder import (
+    build_comparison_portfolio_handoff_payload
 )
 
 
@@ -413,6 +417,8 @@ def render_comparison_portfolio_section():
     portfolio_zip_filename = build_comparison_portfolio_bundle_filename(portfolio)
     
     try:
+        # Build payload once for reuse in ZIP and Handoff
+        export_payload = build_comparison_portfolio_export_payload(portfolio)
         portfolio_zip_bytes = build_comparison_portfolio_export_bundle(portfolio)
         
         c1, c2 = st.columns(2)
@@ -426,17 +432,38 @@ def render_comparison_portfolio_section():
             )
         with c2:
             st.write(f"**Bundle Filename:** `{portfolio_zip_filename}`")
-            st.caption("Contents: manifest.json, index.json, per-comparison handoff/summary/metrics")
+            st.caption("Contents: manifest.json, index.json, handoff_contract.json, comparisons/")
             
         with st.expander("Explore Bundle Structure Preview", expanded=False):
             st.code(f"""
 {portfolio_zip_filename}
 ├── portfolio_manifest.json
 ├── comparison_index.json
+├── portfolio_handoff_contract.json
 └── comparisons/
     {"".join([f"├── {cid}/" for cid in portfolio.comparison_ids[:3]])}
     { "..." if portfolio.count > 3 else ""}
             """, language="text")
+
+        # 4. Handoff Contract Preview (v0.16.4)
+        st.subheader("Handoff Contract Preview")
+        st.info("下流ツールがこのポートフォリオを認識するための正式な定義（Contract）です。")
+        
+        handoff_contract = build_comparison_portfolio_handoff_payload(
+            portfolio, export_payload, portfolio_zip_filename
+        )
+        
+        h1, h2 = st.columns(2)
+        with h1:
+            st.write(f"**Portfolio ID:** `{handoff_contract.portfolio_id}`")
+            st.write(f"**Matrix Kinds:** `{', '.join(handoff_contract.matrix_kinds)}`")
+        with h2:
+            sys_sum = handoff_contract.feature_id_system_summary
+            st.write(f"**ID Systems:** `{', '.join(sys_sum.feature_id_systems)}` ({'⚠️ Mixed' if sys_sum.is_mixed else 'Consistent'})")
+            st.write(f"**Total Comparisons:** `{len(handoff_contract.included_comparison_ids)}`")
+
+        with st.expander("Show Portfolio Handoff JSON", expanded=False):
+            st.json(handoff_contract.to_dict())
 
     except Exception as e:
         st.error(f"Failed to prepare portfolio export: {e}")

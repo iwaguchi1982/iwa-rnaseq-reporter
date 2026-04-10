@@ -79,7 +79,9 @@ def test_build_portfolio_export_bundle_contents():
     exp.summary_metrics = real_metrics
     rec.export_payload = exp
     rec.summary_metrics = real_metrics
-    rec.handoff_payload.to_dict.return_value = {"id": "comp-1"}
+    rec.handoff_payload = MagicMock()
+    rec.handoff_payload.feature_id_system = "ENSEMBL"
+    rec.handoff_payload.to_dict.return_value = {"id": "comp-1", "feature_id_system": "ENSEMBL"}
     
     mock_p.records = [rec]
     

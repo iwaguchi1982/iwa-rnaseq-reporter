@@ -10,6 +10,7 @@ from .comparison_portfolio_export import (
     ComparisonPortfolioIndexEntrySpec,
     ComparisonPortfolioExportPayload
 )
+from .comparison_portfolio_handoff_builder import build_comparison_portfolio_handoff_payload
 
 def build_comparison_portfolio_manifest(portfolio: ComparisonPortfolioContext) -> ComparisonPortfolioManifestSpec:
     """
@@ -63,6 +64,11 @@ def build_comparison_portfolio_export_bundle(portfolio: ComparisonPortfolioConte
     Generate a ZIP archive containing the entire portfolio orchestrated for downstream.
     """
     payload = build_comparison_portfolio_export_payload(portfolio)
+
+    # Generate portfolio handoff contract
+    handoff_contract = build_comparison_portfolio_handoff_payload(
+        portfolio, payload, build_comparison_portfolio_bundle_filename(portfolio)
+    )
     
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -74,6 +80,10 @@ def build_comparison_portfolio_export_bundle(portfolio: ComparisonPortfolioConte
         zf.writestr(
             "comparison_index.json",
             json.dumps([asdict(e) for e in payload.comparison_index], indent=2, ensure_ascii=False)
+        )
+        zf.writestr(
+            "portfolio_handoff_contract.json",
+            json.dumps(handoff_contract.to_dict(), indent=2, ensure_ascii=False)
         )
         
         # 2. Comparison Subdirectories
