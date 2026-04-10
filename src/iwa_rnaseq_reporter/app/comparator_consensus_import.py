@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Tuple, Dict, Any, Union
 from pathlib import Path
 
 @dataclass(frozen=True)
@@ -36,6 +36,9 @@ class ConsensusBundlePaths:
     handoff_contract_path: Optional[Path] = None
     summary_path: Optional[Path] = None
     results_table_path: Optional[Path] = None
+    # v0.19.2a added slots for internal JSONs if needed
+    decisions_json_path: Optional[Path] = None
+    evidence_profiles_path: Optional[Path] = None
     optional_paths: Dict[str, Path] = field(default_factory=dict)
 
 @dataclass(frozen=True)
@@ -47,7 +50,12 @@ class ConsensusBundleImportContext:
     handoff_contract: Optional[Dict[str, Any]]
     paths: ConsensusBundlePaths
     contract_info: ConsensusBundleContractInfo
-    # Future slots for parsed typed objects
+    # v0.19.2a Data slots
+    summary_markdown: Optional[str] = None
+    results_table: Optional[Any] = None  # Expected pd.DataFrame
+    decisions_json: Optional[Union[Dict[str, Any], Tuple[Dict[str, Any], ...]]] = None
+    evidence_profiles_json: Optional[Union[Dict[str, Any], Tuple[Dict[str, Any], ...]]] = None
+    # Legacy slots
     decisions: Tuple[Any, ...] = field(default_factory=tuple)
     summary: Optional[Any] = None
 

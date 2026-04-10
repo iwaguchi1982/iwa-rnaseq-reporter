@@ -1,7 +1,7 @@
 import json
 import dataclasses
 import datetime
-from typing import Tuple
+from typing import Tuple, Optional
 from .comparator_consensus import ComparatorConsensusContext
 from .comparator_consensus_export import ComparatorConsensusExportPayload, ProvenanceSpec
 from .comparator_consensus_handoff import (
@@ -14,7 +14,8 @@ from .version_helper import get_package_version
 def build_consensus_handoff_payload(
     context: ComparatorConsensusContext,
     export_payload: ComparatorConsensusExportPayload,
-    bundle_filename: str
+    bundle_filename: str,
+    generated_at: Optional[str] = None
 ) -> ComparatorConsensusHandoffPayload:
     """
     Construct the final handoff contract for downstream integration.
@@ -46,9 +47,12 @@ def build_consensus_handoff_payload(
         for d in context.decisions
     ]
     
-    # v0.19.1 Provenance
-    now = datetime.datetime.now(datetime.timezone.utc)
-    gen_at = now.isoformat()
+    # v0.19.2a Harmonized timestamp
+    gen_at = generated_at
+    if gen_at is None:
+        now = datetime.datetime.now(datetime.timezone.utc)
+        gen_at = now.isoformat()
+
     prov = ProvenanceSpec(
         producer_app="iwa_rnaseq_reporter",
         producer_version=get_package_version(),
