@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Tuple
+from typing import Optional, Tuple
 
 @dataclass(frozen=True)
 class ReferenceComparisonSpec:
@@ -12,6 +12,8 @@ class ReferenceComparisonSpec:
     comparison_group_a: str
     comparison_group_b: str
     result_ref: str  # Pointer to actual result data (e.g., file path or ID)
+    consensus_label_key: Optional[str] = None
+    consensus_label_display: Optional[str] = None
 
 @dataclass(frozen=True)
 class ReferenceDatasetSpec:
