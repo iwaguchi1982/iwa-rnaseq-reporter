@@ -23,6 +23,7 @@ from iwa_rnaseq_reporter.legacy.ui_utils import (
 )
 from iwa_rnaseq_reporter.app.analysis_workspace_context import AnalysisWorkspaceContext
 from iwa_rnaseq_reporter.app.deg_result_builder import build_deg_result_context
+from iwa_rnaseq_reporter.app.deg_export_builder import build_deg_export_payload
 
 
 def render_deg_comparison_design_section(
@@ -285,9 +286,12 @@ def render_deg_analysis_section(
                 st.subheader("DEG Results Table")
                 st.dataframe(format_display_df(context.result_table.head(int(preview_top_n))), use_container_width=True)
                 
+                # v0.15.2: Use formal export payload for downloads
+                export_payload = build_deg_export_payload(context, deg_input_obj)
+
                 st.write("### エクスポート")
                 st.caption("現在ブラウザ上でプレビューされている全てのDEG結果（全件）をCSV形式で保存します。")
-                csv = context.result_table.to_csv(index=False).encode('utf-8')
+                csv = export_payload.result_table.to_csv(index=False).encode('utf-8')
                 st.download_button(
                     label="📥 フルDEG結果をCSVでダウンロード",
                     data=csv,
