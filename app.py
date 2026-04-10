@@ -30,6 +30,7 @@ from iwa_rnaseq_reporter.legacy.feature_stats import (
 from iwa_rnaseq_reporter.app.deg_sections import (
     render_deg_comparison_design_section,
     render_deg_analysis_section,
+    render_comparison_portfolio_section,
 )
 from iwa_rnaseq_reporter.models.analysis_bundle_view_model import ReporterAnalysisBundle, BundleDiagnostic
 from iwa_rnaseq_reporter.io.input_resolution import resolve_reporter_input_paths
@@ -435,7 +436,11 @@ if session_ctx and session_ctx.is_dataset_ready:
     else:
         deg_input_obj = None
 
-    # --------------------------------------------------
     # 14. DEG Analysis (Statistical)
     # --------------------------------------------------
     render_deg_analysis_section(workspace, deg_input_obj, comparison_column, group_a, group_b)
+
+    # --------------------------------------------------
+    # 15. Comparison Portfolio (v0.16.2)
+    # --------------------------------------------------
+    render_comparison_portfolio_section()

@@ -31,7 +31,13 @@ from iwa_rnaseq_reporter.app.deg_export_bundle import (
 from iwa_rnaseq_reporter.app.deg_handoff_builder import build_deg_handoff_payload
 from iwa_rnaseq_reporter.app.comparison_portfolio_builder import (
     build_comparison_record,
-    upsert_comparison_record
+    upsert_comparison_record,
+    list_comparison_records,
+    get_comparison_record
+)
+from iwa_rnaseq_reporter.app.comparison_portfolio_summary import (
+    build_comparison_portfolio_summary_rows,
+    build_comparison_portfolio_summary_dataframe
 )
 
 
@@ -313,7 +319,7 @@ def render_deg_analysis_section(
 
                 st.write("### エクスポート")
                 portfolio_count = st.session_state["comparison_portfolio_context"].count
-                st.success(f"✅ 解析結果をポートフォリオに登録しました（現在 {portfolio_count} 件）")
+                st.success(f"✅ 解析結果をポートフォリオに登録しました (現在 {portfolio_count} 件蓄積)")
                 st.info("解析結果、比較条件、実行メタデータをまとめた一式をダウンロードできます（推奨）。")
                 
                 e1, e2 = st.columns(2)
@@ -346,5 +352,54 @@ def render_deg_analysis_section(
 
             except Exception as e:
                 st.error(f"Failed to display DEG results: {e}")
+
+
+def render_comparison_portfolio_section():
+    """
+    Render the Comparison Portfolio summary view (v0.16.2).
+    Shows all comparisons registered in the current session.
+    """
+    st.header("15. Comparison Portfolio Summary")
+    
+    portfolio = st.session_state.get("comparison_portfolio_context")
+    if not portfolio or portfolio.count == 0:
+        st.info("💡 比較を実行するとポートフォリオに蓄積されます。まだ登録されている比較はありません。")
+        return
+
+    # 1. Summary Table
+    st.subheader("蓄積された比較一覧")
+    rows = build_comparison_portfolio_summary_rows(portfolio)
+    df = build_comparison_portfolio_summary_dataframe(rows)
+    
+    # Format for display
+    display_df = df.copy()
+    if "max_abs_log2_fc" in display_df.columns:
+        display_df["max_abs_log2_fc"] = display_df["max_abs_log2_fc"].map(lambda x: f"{x:.4f}" if x is not None else "NA")
+
+    st.dataframe(display_df, use_container_width=True, hide_index=True)
+    
+    # 2. Minimal Preview
+    st.subheader("比較詳細プレビュー")
+    selected_id = st.selectbox(
+        "プレビューする比較を選択",
+        options=portfolio.comparison_ids,
+        index=portfolio.count - 1  # Default to latest
+    )
+    
+    record = get_comparison_record(portfolio, selected_id)
+    if record:
+        c1, c2 = st.columns(2)
+        with c1:
+            st.write(f"**Label:** `{record.comparison_label}`")
+            st.write(f"**Matrix:** `{record.export_payload.metadata.matrix_kind}`")
+            st.write(f"**ID:** `{record.comparison_id}`")
+        with c2:
+            metrics = record.summary_metrics
+            st.write(f"**Sig. Up:** `{metrics.n_sig_up}`")
+            st.write(f"**Sig. Dn:** `{metrics.n_sig_down}`")
+            st.write(f"**Bundle:** `{record.bundle_filename}`")
+        
+        with st.expander("Show Detailed Metrics & Metadata", expanded=False):
+            st.json(record.handoff_payload.to_dict())
     else:
         st.info("Build a valid comparison design to run DEG analysis.")
