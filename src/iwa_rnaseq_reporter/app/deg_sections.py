@@ -24,6 +24,10 @@ from iwa_rnaseq_reporter.legacy.ui_utils import (
 from iwa_rnaseq_reporter.app.analysis_workspace_context import AnalysisWorkspaceContext
 from iwa_rnaseq_reporter.app.deg_result_builder import build_deg_result_context
 from iwa_rnaseq_reporter.app.deg_export_builder import build_deg_export_payload
+from iwa_rnaseq_reporter.app.deg_export_bundle import (
+    build_deg_export_bundle,
+    build_deg_export_bundle_filename
+)
 
 
 def render_deg_comparison_design_section(
@@ -286,19 +290,37 @@ def render_deg_analysis_section(
                 st.subheader("DEG Results Table")
                 st.dataframe(format_display_df(context.result_table.head(int(preview_top_n))), use_container_width=True)
                 
-                # v0.15.2: Use formal export payload for downloads
+                # v0.15.2/3: Formal export payload and bundle
                 export_payload = build_deg_export_payload(context, deg_input_obj)
+                zip_bytes = build_deg_export_bundle(export_payload)
+                zip_filename = build_deg_export_bundle_filename(export_payload)
 
                 st.write("### エクスポート")
-                st.caption("現在ブラウザ上でプレビューされている全てのDEG結果（全件）をCSV形式で保存します。")
-                csv = export_payload.result_table.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="📥 フルDEG結果をCSVでダウンロード",
-                    data=csv,
-                    file_name=f"deg_results_{context.group_a}_vs_{context.group_b}.csv",
-                    mime="text/csv",
-                    type="primary",
-                )
+                st.info("解析結果、比較条件、実行メタデータをまとめた一式をダウンロードできます（推奨）。")
+                
+                e1, e2 = st.columns(2)
+                with e1:
+                    st.download_button(
+                        label="📥 Download Report Bundle (ZIP)",
+                        data=zip_bytes,
+                        file_name=zip_filename,
+                        mime="application/zip",
+                        type="primary",
+                        use_container_width=True
+                    )
+                with e2:
+                    csv_data = export_payload.result_table.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="📄 Results Table only (CSV)",
+                        data=csv_data,
+                        file_name=f"deg_results_{context.group_a}_vs_{context.group_b}.csv",
+                        mime="text/csv",
+                        use_container_width=True
+                    )
+                
+                with st.expander("Show Export Payload Preview (JSON)", expanded=False):
+                    st.json(export_payload.summary.to_dict())
+                    st.json(export_payload.metadata.to_dict())
 
             except Exception as e:
                 st.error(f"Failed to display DEG results: {e}")
