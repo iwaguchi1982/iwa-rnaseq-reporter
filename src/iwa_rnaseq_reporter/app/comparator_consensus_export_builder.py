@@ -3,7 +3,7 @@ import json
 import io
 import zipfile
 import pandas as pd
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 from .comparator_consensus import ComparatorConsensusContext
 from .comparator_consensus_export import (
     ComparatorConsensusManifestSpec,
@@ -44,14 +44,18 @@ def build_consensus_decision_rows(
 
 def build_consensus_export_payload(
     context: ComparatorConsensusContext,
-    run_id: str
+    run_id: str,
+    generated_at: Optional[str] = None
 ) -> ComparatorConsensusExportPayload:
     """
     Gather all data needed for serialization into the bundle.
     """
-    # v0.19.1 Provenance
-    now = datetime.datetime.now(datetime.timezone.utc)
-    gen_at = now.isoformat()
+    # v0.19.1/v0.19.2 Provenance
+    gen_at = generated_at
+    if gen_at is None:
+        now = datetime.datetime.now(datetime.timezone.utc)
+        gen_at = now.isoformat()
+        
     prov = ProvenanceSpec(
         producer_app="iwa_rnaseq_reporter",
         producer_version=get_package_version(),
