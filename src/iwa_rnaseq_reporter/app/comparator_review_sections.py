@@ -22,6 +22,15 @@ from iwa_rnaseq_reporter.app.comparator_review_annotation_builder import (
     get_comparator_review_annotation,
     build_comparator_review_annotation_summary
 )
+from iwa_rnaseq_reporter.app.comparator_review_export_builder import (
+    build_comparator_review_run_id,
+    build_comparator_review_bundle_filename,
+    build_comparator_review_export_bundle,
+    build_comparator_review_export_payload,
+    build_comparator_review_handoff_payload,
+    build_comparator_review_summary_md,
+    _dataclass_to_dict
+)
 
 def _render_summary_counters(ctx: ComparatorReviewTableContext, ann_store: Optional[ComparatorReviewAnnotationStore] = None):
     """
@@ -324,6 +333,50 @@ def render_comparator_review_table_section():
                         st.rerun()
                     except Exception as e:
                         st.error(f"Failed to clear: {e}")
+
+            # F. Review Export / Handoff (v0.20.5)
+            st.divider()
+            st.subheader("Review Export & Handoff")
+            st.markdown("Package current review results into a formal delivery bundle.")
+            
+            try:
+                # 1. Prepare Metadata for Preview/ID
+                review_run_id = build_comparator_review_run_id(session_ctx.source_consensus_run_id)
+                bundle_filename = build_comparator_review_bundle_filename(review_run_id)
+                
+                exp_payload = build_comparator_review_export_payload(import_ctx, session_ctx, ann_store, review_run_id)
+                handoff_payload = build_comparator_review_handoff_payload(
+                    import_ctx, session_ctx, ann_store, exp_payload, bundle_filename, review_run_id
+                )
+                
+                # 2. Download Button
+                # Generate bundle bytes
+                bundle_bytes = build_comparator_review_export_bundle(import_ctx, session_ctx, ann_store)
+                
+                st.download_button(
+                    label="📥 Download Review Bundle (ZIP)",
+                    data=bundle_bytes,
+                    file_name=bundle_filename,
+                    mime="application/zip",
+                    help="Contains manifest, JSON/CSV rows, summary (MD/JSON), and handoff contract."
+                )
+                
+                # 3. Preview Expanders
+                with st.expander("Preview Export Context", expanded=False):
+                    p1, p2, p3 = st.tabs(["Manifest", "Summary", "Handoff Contract"])
+                    with p1:
+                        st.json(_dataclass_to_dict(exp_payload.manifest))
+                    with p2:
+                        st.json(_dataclass_to_dict(exp_payload.summary))
+                    with p3:
+                        st.json(_dataclass_to_dict(handoff_payload))
+                
+                with st.expander("Preview Summary Report (Markdown)", expanded=False):
+                    summary_md = build_comparator_review_summary_md(exp_payload)
+                    st.markdown(summary_md)
+
+            except Exception as e:
+                st.error(f"Preview/Export generation failed: {e}")
 
         except Exception as e:
             st.error(f"Failed to build drilldown details: {e}")
