@@ -42,10 +42,12 @@ def read_review_bundle(bundle_path: str) -> ComparatorReviewImportContext:
             if "review_manifest.json" not in namelist or "review_handoff_contract.json" not in namelist:
                 return _build_error_ctx(issues)
                 
-            # 2. Parse and Validate Schema (spec 175-189)
+            # 2. Parse and Validate Schema (spec 175-189, 46-71 hardening)
             manifest_json = json.loads(zf.read("review_manifest.json"))
             if manifest_json.get("schema_name") != "comparator-review-export-manifest":
                 issues.append(f"Invalid manifest schema_name: {manifest_json.get('schema_name')}")
+            if manifest_json.get("schema_version") != "1.0.0":
+                issues.append(f"Invalid manifest schema_version: {manifest_json.get('schema_version')}")
             if not isinstance(manifest_json.get("provenance"), dict):
                 issues.append("Manifest provenance must be a dictionary.")
             
@@ -54,6 +56,8 @@ def read_review_bundle(bundle_path: str) -> ComparatorReviewImportContext:
             handoff_data = json.loads(zf.read("review_handoff_contract.json"))
             if handoff_data.get("schema_name") != "comparator-review-handoff":
                 issues.append(f"Invalid handoff schema_name: {handoff_data.get('schema_name')}")
+            if handoff_data.get("schema_version") != "1.0.0":
+                issues.append(f"Invalid handoff schema_version: {handoff_data.get('schema_version')}")
             if not isinstance(handoff_data.get("provenance"), dict):
                 issues.append("Handoff provenance must be a dictionary.")
 
@@ -150,11 +154,19 @@ def read_review_bundle(bundle_path: str) -> ComparatorReviewImportContext:
             if handoff_contract and handoff_contract.summary and len(rows) != handoff_contract.summary.n_total_rows:
                 issues.append(f"Row count ({len(rows)}) mismatch with handoff summary.")
 
-            # 6. Bundle refs consistency
-            if b_refs.review_manifest_path != "review_manifest.json":
-                issues.append(f"Bundle ref mismatch: review_manifest_path is {b_refs.review_manifest_path}")
-            if b_refs.review_rows_json_path != "review_rows.json":
-                issues.append(f"Bundle ref mismatch: review_rows_json_path is {b_refs.review_rows_json_path}")
+            # 6. Bundle refs consistency (spec 74-101: expanded to all 6 artifacts)
+            expected_refs = {
+                "review_manifest_path": "review_manifest.json",
+                "review_rows_json_path": "review_rows.json",
+                "review_rows_csv_path": "review_rows.csv",
+                "review_summary_json_path": "review_summary.json",
+                "review_summary_md_path": "review_summary.md",
+                "review_handoff_contract_path": "review_handoff_contract.json",
+            }
+            for attr, expected_val in expected_refs.items():
+                actual_val = getattr(b_refs, attr)
+                if actual_val != expected_val:
+                    issues.append(f"Bundle ref mismatch: {attr} is {actual_val}")
                 
             # Final Context
             paths = ComparatorReviewImportPaths(

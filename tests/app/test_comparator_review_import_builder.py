@@ -81,3 +81,104 @@ def test_validate_id_mismatch():
     finally:
         if os.path.exists(tf_path):
             os.remove(tf_path)
+
+def test_validate_schema_version_mismatch():
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tf:
+        tf_path = tf.name
+        
+    try:
+        manifest = {
+            "schema_name": "comparator-review-export-manifest",
+            "schema_version": "0.9.0", # Wrong version
+            "provenance": {},
+            "source_consensus_run_id": "run1",
+            "review_run_id": "rev1"
+        }
+        handoff = {
+            "schema_name": "comparator-review-handoff",
+            "schema_version": "1.1.0", # Wrong version
+            "generated_at": "2024-01-01T00:00:00",
+            "review_run_id": "rev1",
+            "provenance": {},
+            "source_consensus_run_id": "run1",
+            "included_comparison_ids": [],
+            "review_decision_refs": [],
+            "bundle_refs": {"review_bundle_filename": "rev1.zip"},
+            "source_refs": {"source_consensus_run_id": "run1"},
+            "summary": {"n_total_rows": 0}
+        }
+        
+        with zipfile.ZipFile(tf_path, "w") as zf:
+            zf.writestr("review_manifest.json", json.dumps(manifest))
+            zf.writestr("review_handoff_contract.json", json.dumps(handoff))
+            zf.writestr("review_rows.json", "[]")
+            zf.writestr("review_rows.csv", "")
+            zf.writestr("review_summary.json", json.dumps({"n_total_rows": 0}))
+            zf.writestr("review_summary.md", "")
+            
+        imp_ctx = read_review_bundle(tf_path)
+        assert not imp_ctx.is_valid
+        assert any("Invalid manifest schema_version: 0.9.0" in issue for issue in imp_ctx.issues)
+        assert any("Invalid handoff schema_version: 1.1.0" in issue for issue in imp_ctx.issues)
+    finally:
+        if os.path.exists(tf_path):
+            os.remove(tf_path)
+
+def test_validate_bundle_refs_mismatch():
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tf:
+        tf_path = tf.name
+        
+    try:
+        # Correct versions, but broken bundle refs
+        handoff = {
+            "schema_name": "comparator-review-handoff",
+            "schema_version": "1.0.0",
+            "generated_at": "2024-01-01T00:00:00",
+            "review_run_id": "rev1",
+            "provenance": {},
+            "source_consensus_run_id": "run1",
+            "included_comparison_ids": [],
+            "review_decision_refs": [],
+            "bundle_refs": {
+                "review_bundle_filename": "rev1.zip",
+                "review_rows_csv_path": "broken.csv", # Wrong
+                "review_summary_md_path": "missing.md"   # Wrong
+            },
+            "source_refs": {"source_consensus_run_id": "run1"},
+            "summary": {"n_total_rows": 0}
+        }
+        # Filling other required bundle_refs
+        full_bundle_refs = {
+            "review_bundle_filename": "rev1.zip",
+            "review_manifest_path": "review_manifest.json",
+            "review_rows_json_path": "review_rows.json",
+            "review_rows_csv_path": "wrong_rows.csv",
+            "review_summary_json_path": "review_summary.json",
+            "review_summary_md_path": "wrong_summary.md",
+            "review_handoff_contract_path": "review_handoff_contract.json"
+        }
+        handoff["bundle_refs"] = full_bundle_refs
+        
+        manifest = {
+            "schema_name": "comparator-review-export-manifest",
+            "schema_version": "1.0.0",
+            "provenance": {},
+            "source_consensus_run_id": "run1",
+            "review_run_id": "rev1"
+        }
+
+        with zipfile.ZipFile(tf_path, "w") as zf:
+            zf.writestr("review_manifest.json", json.dumps(manifest))
+            zf.writestr("review_handoff_contract.json", json.dumps(handoff))
+            zf.writestr("review_rows.json", "[]")
+            zf.writestr("review_rows.csv", "")
+            zf.writestr("review_summary.json", json.dumps({"n_total_rows": 0}))
+            zf.writestr("review_summary.md", "")
+            
+        imp_ctx = read_review_bundle(tf_path)
+        assert not imp_ctx.is_valid
+        assert any("Bundle ref mismatch: review_rows_csv_path is wrong_rows.csv" in issue for issue in imp_ctx.issues)
+        assert any("Bundle ref mismatch: review_summary_md_path is wrong_summary.md" in issue for issue in imp_ctx.issues)
+    finally:
+        if os.path.exists(tf_path):
+            os.remove(tf_path)
