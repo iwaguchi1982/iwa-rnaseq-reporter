@@ -5,12 +5,15 @@ from iwa_rnaseq_reporter.app.comparator_review_session import (
     ComparatorReviewSessionContext,
     ComparatorReviewRowSpec
 )
-from iwa_rnaseq_reporter.app.comparator_review_session_builder import build_comparator_review_session_context_from_bundle
+from iwa_rnaseq_reporter.app.comparator_consensus_import import ConsensusBundleImportContext
+from iwa_rnaseq_reporter.app.comparator_consensus_import_builder import read_consensus_bundle
+from iwa_rnaseq_reporter.app.comparator_review_session_builder import build_comparator_review_session_context
 from iwa_rnaseq_reporter.app.comparator_review_table import ComparatorReviewFilterSpec, ComparatorReviewTableContext
 from iwa_rnaseq_reporter.app.comparator_review_table_builder import (
     build_comparator_review_table_context,
     build_comparator_review_table_dataframe
 )
+from iwa_rnaseq_reporter.app.comparator_review_drilldown_builder import build_comparator_review_drilldown_context
 
 def _render_summary_counters(ctx: ComparatorReviewTableContext):
     """
@@ -43,7 +46,7 @@ def render_comparator_review_table_section():
     st.header("Consensus Review Table")
     st.markdown("Examine and triage consensus results from comparative analysis.")
     
-    # Bundle Intake (spec 285-308)
+    # Bundle Intake (spec 285-308, v0.20.3 refactor)
     with st.expander("Import Consensus Bundle", expanded=st.session_state.get("comparator_review_session_context") is None):
         manifest_path = st.text_input(
             "Consensus Manifest Path",
@@ -52,7 +55,11 @@ def render_comparator_review_table_section():
         )
         if st.button("Load Review Session"):
             try:
-                session_ctx = build_comparator_review_session_context_from_bundle(manifest_path)
+                # v0.20.3: One-time bundle read to keep import_ctx for inspection
+                import_ctx = read_consensus_bundle(manifest_path)
+                session_ctx = build_comparator_review_session_context(import_ctx)
+                
+                st.session_state["comparator_review_import_context"] = import_ctx
                 st.session_state["comparator_review_session_context"] = session_ctx
                 st.session_state["comparator_review_bundle_manifest_path"] = manifest_path
                 st.success(f"Successfully loaded {len(session_ctx.rows)} comparisons")
@@ -125,3 +132,95 @@ def render_comparator_review_table_section():
         
     df = build_comparator_review_table_dataframe(table_ctx.filtered_rows)
     st.dataframe(df, use_container_width=True, hide_index=True)
+
+    # --------------------------------------------------
+    # Drilldown Pane (v0.20.3)
+    # --------------------------------------------------
+    st.divider()
+    st.subheader("Inspection & Drilldown")
+    
+    # 1. Selection based on filtered rows
+    f_rows = table_ctx.filtered_rows
+    selection_options = [r.comparison_id for r in f_rows]
+    
+    selected_comp_id = st.selectbox(
+        "Select Comparison to Inspect",
+        options=selection_options,
+        format_func=lambda cid: next(
+            (f"{r.comparison_id} | {r.decision_status} | {r.decided_label_display or r.decided_label_key or '-'}" 
+             for r in f_rows if r.comparison_id == cid), 
+            cid
+        )
+    )
+    
+    import_ctx: Optional[ConsensusBundleImportContext] = st.session_state.get("comparator_review_import_context")
+    
+    if selected_comp_id and import_ctx:
+        try:
+            drilldown_ctx = build_comparator_review_drilldown_context(import_ctx, session_ctx, selected_comp_id)
+            d = drilldown_ctx.decision_detail
+            
+            # A. Decision Summary Card
+            st.markdown(f"### Details: `{d.comparison_id}`")
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Status", d.decision_status)
+            c2.metric("Decided Label", d.decided_label_display or d.decided_label_key or "-")
+            c3.metric("Support Margin", f"{d.support_margin:.4f}" if d.support_margin is not None else "-")
+            
+            s1, s2, s3 = st.columns(3)
+            s1.write(f"**Supporting Refs:** {d.n_supporting_refs}")
+            s2.write(f"**Conflicting Refs:** {d.n_conflicting_refs}")
+            s3.write(f"**Competing Candidates:** {d.n_competing_candidates or '-'}")
+            
+            if d.has_conflict:
+                st.warning("⚠️ Conflict detected in evidence.")
+            if d.has_weak_support:
+                st.info("ℹ️ Weak support from references.")
+            
+            if d.reason_codes:
+                st.write("**Reason Codes:**", ", ".join(d.reason_codes))
+                
+            # B. Reference Tables
+            t1, t2 = st.tabs(["Supporting References", "Conflicting References"])
+            with t1:
+                if d.top_supporting_refs:
+                    sup_df = pd.DataFrame([vars(r) for r in d.top_supporting_refs])
+                    st.dataframe(sup_df, use_container_width=True, hide_index=True)
+                else:
+                    st.caption("No supporting references.")
+            with t2:
+                if d.top_conflicting_refs:
+                    con_df = pd.DataFrame([vars(r) for r in d.top_conflicting_refs])
+                    st.dataframe(con_df, use_container_width=True, hide_index=True)
+                else:
+                    st.caption("No conflicting references.")
+            
+            # C. Artifact Pointers
+            with st.expander("Artifact Pointers", expanded=False):
+                st.write("**Decisions (JSON):**", d.artifacts.consensus_decisions_json_path or "-")
+                st.write("**Evidence Profile (JSON):**", d.artifacts.evidence_profiles_json_path or "-")
+                st.write("**Summary (MD):**", d.artifacts.report_summary_md_path or "-")
+                st.write("**Handoff (JSON):**", d.artifacts.consensus_handoff_contract_path or "-")
+
+            # D. Raw JSON Inspection
+            with st.expander("Raw JSON Inspection", expanded=False):
+                j1, j2 = st.tabs(["Decision Payload", "Evidence Profile"])
+                with j1:
+                    if drilldown_ctx.json_inspection.decision_json:
+                        st.json(drilldown_ctx.json_inspection.decision_json)
+                    else:
+                        st.info("No decision JSON available.")
+                with j2:
+                    if drilldown_ctx.json_inspection.evidence_profile_json:
+                        st.json(drilldown_ctx.json_inspection.evidence_profile_json)
+                    else:
+                        st.info("No evidence profile JSON available.")
+            
+            if drilldown_ctx.issues:
+                for issue in drilldown_ctx.issues:
+                    st.error(f"Issue: {issue}")
+
+        except Exception as e:
+            st.error(f"Failed to build drilldown details: {e}")
+    elif not selected_comp_id:
+        st.caption("Select a comparison from the list above to view detail evidence.")
