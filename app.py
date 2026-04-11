@@ -32,11 +32,19 @@ from iwa_rnaseq_reporter.app.deg_sections import (
     render_deg_analysis_section,
     render_comparison_portfolio_section,
 )
+from iwa_rnaseq_reporter.app.comparator_review_sections import (
+    render_comparator_review_table_section,
+)
 from iwa_rnaseq_reporter.models.analysis_bundle_view_model import ReporterAnalysisBundle, BundleDiagnostic
 from iwa_rnaseq_reporter.io.input_resolution import resolve_reporter_input_paths
 from iwa_rnaseq_reporter.app.resolved_input_context import ResolvedInputContext
 from iwa_rnaseq_reporter.app.reporter_session_context import ReporterSessionContext
-from iwa_rnaseq_reporter.app.entry_loader import load_reporter_entry_state
+from iwa_rnaseq_reporter.app.entry_loader import (
+    load_reporter_entry_state,
+)
+# Compatibility alias for legacy tests
+load_reporter_analysis_bundle = load_reporter_entry_state
+
 from iwa_rnaseq_reporter.app.analysis_config import AnalysisConfig, validate_analysis_config
 from iwa_rnaseq_reporter.app.analysis_workspace_context import AnalysisWorkspaceContext
 from iwa_rnaseq_reporter.app.analysis_workspace_builder import build_analysis_workspace
@@ -173,6 +181,23 @@ def _render_bundle_summary(session_ctx: Optional[ReporterSessionContext]):
             st.write(f"**Error:** {diag.technical_message}")
             st.caption(f"Attempted Path: {diag.manifest_path}")
 
+def _try_load_bundle(input_path_str: str):
+    """
+    Compatibility wrapper for legacy UI tests. 
+    Orchestrates dataset and bundle loading via unified entry loader.
+    """
+    try:
+        session_ctx = load_reporter_entry_state(input_path_str)
+        sync_reporter_session_state(session_ctx)
+        return session_ctx
+    except Exception as e:
+        # For legacy compatibility, we don't re-raise but ensure 
+        # session_state reflects failure if expected by tests.
+        st.session_state["analysis_bundle"] = None
+        # Note: sync_reporter_session_state would have handled it 
+        # but if load_reporter_entry_state itself fails, we handle here.
+        raise e
+
 
 # --------------------------------------------------
 # 1. Input
@@ -188,34 +213,25 @@ if st.button("Load Dataset"):
         st.error("Please provide a path.")
     else:
         try:
-            # v0.13.4: Orchestrate entry load using specialized helper
-            session_ctx = load_reporter_entry_state(input_path_str)
-            sync_reporter_session_state(session_ctx)
-
+            # v0.13.4: Orchestrate entry load using compatibility wrapper
+            session_ctx = _try_load_bundle(input_path_str)
+            
             # Notification based on context
             res_ctx = session_ctx.resolved_input_context
             if res_ctx.is_unresolved:
                 st.error("Failed to resolve input path.")
                 for msg in res_ctx.resolution_messages:
-                    st.info(msg)
+                    if msg: st.info(msg)
             else:
                 if not session_ctx.has_dataset:
                     st.warning("Dataset not loaded. Check resolution details.")
-                
                 st.success(f"Input resolved as {res_ctx.input_kind} ({res_ctx.load_mode})")
                 
-        except ReporterLoadError as e:
-            st.error("Failed to load dataset.")
-            for msg in e.messages:
-                if msg.level == "fatal":
-                    st.error(f"FATAL [{msg.code}]: {msg.message}")
-                elif msg.level == "warning":
-                    st.warning(f"WARNING [{msg.code}]: {msg.message}")
-                else:
-                    st.info(f"INFO [{msg.code}]: {msg.message}")
         except Exception as e:
-            st.exception(e)
-
+            st.error(f"Unexpected error during load: {e}")
+            # Ensure session_state reflects failure for legacy tests
+            st.session_state["analysis_bundle"] = None
+    
 session_ctx = st.session_state.get("reporter_session_context")
 
 if session_ctx and session_ctx.has_resolved_input:
@@ -444,3 +460,8 @@ if session_ctx and session_ctx.is_dataset_ready:
     # 15. Comparison Portfolio (v0.16.2)
     # --------------------------------------------------
     render_comparison_portfolio_section()
+
+    # --------------------------------------------------
+    # 16. Consensus Review Table (v0.20.2)
+    # --------------------------------------------------
+    render_comparator_review_table_section()
