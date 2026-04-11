@@ -286,6 +286,36 @@ def _validate_decision_support_block(ds: Any, obj_label: str, issues: List[Conse
                             field_name=f"{ref_label}.artifact_refs.{f}"
                         ))
 
+            # 5. Top Refs nested validation (v0.19.4.3a)
+            for top_key in ["top_supporting_reference_refs", "top_conflicting_reference_refs"]:
+                if top_key in ref:
+                    top_list = ref.get(top_key)
+                    if not isinstance(top_list, (list, tuple)):
+                        issues.append(ConsensusBundleValidationIssueSpec(
+                            "error", "invalid_top_reference_refs_type",
+                            f"{top_key} must be a list or tuple",
+                            field_name=f"{ref_label}.{top_key}"
+                        ))
+                        continue
+                    
+                    for j, top_item in enumerate(top_list):
+                        item_label = f"{ref_label}.{top_key}[{j}]"
+                        if not isinstance(top_item, dict):
+                            issues.append(ConsensusBundleValidationIssueSpec(
+                                "error", "invalid_top_reference_ref_type",
+                                "Top reference item must be a dictionary",
+                                field_name=item_label
+                            ))
+                            continue
+                        
+                        for req_f in ["reference_dataset_id", "reference_comparison_id"]:
+                            if req_f not in top_item:
+                                issues.append(ConsensusBundleValidationIssueSpec(
+                                    "error", "missing_top_reference_ref_field",
+                                    f"Field '{req_f}' is missing in top reference",
+                                    field_name=f"{item_label}.{req_f}"
+                                ))
+
 def _validate_decision_support_consistency(handoff: Dict[str, Any], issues: List[ConsensusBundleValidationIssueSpec]):
     """
     Check consistency between handoff body and decision support block.
@@ -339,24 +369,33 @@ def _validate_decision_support_consistency(handoff: Dict[str, Any], issues: List
                 field_name=f"handoff.decision_support.decision_evidence_refs[ID={comp_id}].decision_status"
             ))
 
-    # 4. Artifact Path alignment (sample check)
+    # 4. Artifact Path alignment (v0.19.4.3a: Exhaustive check)
     bundle_refs = handoff.get("bundle_refs", {})
-    if ds_refs and isinstance(ds_refs[0], dict):
-        art_refs = ds_refs[0].get("artifact_refs", {})
-        # Manifest
-        if art_refs.get("consensus_manifest_path") != bundle_refs.get("consensus_manifest_path"):
-             issues.append(ConsensusBundleValidationIssueSpec(
-                "error", "decision_support_artifact_ref_mismatch",
-                f"Manifest path mismatch in support block",
-                field_name="handoff.decision_support.decision_evidence_refs[0].artifact_refs.consensus_manifest_path"
-            ))
-        # Handoff Contract
-        if art_refs.get("consensus_handoff_contract_path") != bundle_refs.get("consensus_handoff_contract_path"):
-             issues.append(ConsensusBundleValidationIssueSpec(
-                "error", "decision_support_artifact_ref_mismatch",
-                f"Handoff contract path mismatch in support block",
-                field_name="handoff.decision_support.decision_evidence_refs[0].artifact_refs.consensus_handoff_contract_path"
-            ))
+    for i, ref in enumerate(ds_refs):
+        if not isinstance(ref, dict):
+            continue
+            
+        ref_id = ref.get("comparison_id", f"idx:{i}")
+        art_refs = ref.get("artifact_refs", {})
+        ref_path = f"handoff.decision_support.decision_evidence_refs[{i}].artifact_refs"
+        
+        # Check all 4 critical paths
+        mapping = [
+            ("consensus_manifest_path", "consensus_manifest_path"),
+            ("consensus_handoff_contract_path", "consensus_handoff_contract_path"),
+            ("consensus_decisions_json_path", "consensus_decisions_path"),
+            ("evidence_profiles_json_path", "evidence_profiles_path")
+        ]
+        
+        for ds_field, bundle_field in mapping:
+            ds_val = art_refs.get(ds_field)
+            br_val = bundle_refs.get(bundle_field)
+            if ds_val and br_val and ds_val != br_val:
+                 issues.append(ConsensusBundleValidationIssueSpec(
+                    "error", "decision_support_artifact_ref_mismatch",
+                    f"Path mismatch for '{ds_field}' in ref {ref_id}: support_block='{ds_val}', bundle_refs='{br_val}'",
+                    field_name=f"{ref_path}.{ds_field}"
+                ))
 
 def validate_consensus_bundle(manifest_path_like: Any) -> ConsensusBundleValidationResult:
     """
