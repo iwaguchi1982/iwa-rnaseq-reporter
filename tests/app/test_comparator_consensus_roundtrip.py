@@ -104,3 +104,25 @@ def test_consensus_export_import_roundtrip():
         assert m_cfg["config_version"] == h_cfg["config_version"]
         assert m_cfg["ranking"]["overlap_weight"] == 0.20
         assert h_cfg["consensus"]["consensus_margin_threshold"] == 0.05
+        
+        # 9. Decision Support Hardening (v0.19.4.3)
+        assert "decision_support" in import_ctx.handoff_contract
+        ds = import_ctx.handoff_contract["decision_support"]
+        assert ds["schema_name"] == "ComparatorDecisionSupportPayload"
+        assert ds["schema_version"] == "0.19.4.1"
+        assert ds["summary"]["n_decision_refs"] == 1
+        assert ds["summary"]["n_consensus"] == 1
+        
+        # Comparison level parity
+        ds_refs = ds["decision_evidence_refs"]
+        legacy_refs = import_ctx.handoff_contract["comparison_decision_refs"]
+        assert len(ds_refs) == 1
+        assert ds_refs[0]["comparison_id"] == "cid1"
+        assert ds_refs[0]["decision_status"] == "consensus"
+        assert ds_refs[0]["comparison_id"] == legacy_refs[0]["comparison_id"]
+        assert ds_refs[0]["decision_status"] == legacy_refs[0]["decision_status"]
+        
+        # Artifact path sanity
+        art_refs = ds_refs[0]["artifact_refs"]
+        assert art_refs["consensus_manifest_path"] == "consensus_manifest.json"
+        assert art_refs["consensus_handoff_contract_path"] == "consensus_handoff_contract.json"

@@ -66,7 +66,15 @@ def _create_minimal_valid_files(root: Path):
             "producer_version": "0.3.0",
             "source_consensus_run_id": "run1"
         },
-        "execution_config": exec_cfg
+        "execution_config": exec_cfg,
+        "decision_support": {
+            "schema_name": "ComparatorDecisionSupportPayload",
+            "schema_version": "0.19.4.1",
+            "decision_evidence_refs": [],
+            "summary": {
+                "n_decision_refs": 0, "n_consensus": 0, "n_abstain": 0, "n_no_consensus": 0, "n_insufficient_evidence": 0
+            }
+        }
     }
     
     with open(manifest_path, "w") as f:
@@ -185,3 +193,79 @@ def test_validate_handoff_requirements():
         assert "invalid_handoff_json" in codes
         # In v0.19.2a, a failing handoff parse leads to unsupported_bundle_contract
         assert "unsupported_bundle_contract" in codes
+
+def test_validate_decision_support_requirements():
+    with TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        _create_minimal_valid_files(root)
+        handoff_path = root / "consensus_handoff_contract.json"
+        
+        with open(handoff_path, "r") as f:
+            handoff = json.load(f)
+
+        # Case 1: Missing decision_support
+        h_missing = handoff.copy()
+        del h_missing["decision_support"]
+        with open(handoff_path, "w") as f:
+            json.dump(h_missing, f)
+        
+        res = validate_consensus_bundle(root)
+        assert "missing_required_field" in [i.code for i in res.issues]
+
+        # Case 2: Malformed summary
+        h_malformed = handoff.copy()
+        h_malformed["decision_support"]["summary"] = {"n_decision_refs": 0} # missing others
+        with open(handoff_path, "w") as f:
+            json.dump(h_malformed, f)
+        
+        res = validate_consensus_bundle(root)
+        assert "missing_decision_support_summary_field" in [i.code for i in res.issues]
+
+def test_validate_decision_support_consistency():
+    with TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        _create_minimal_valid_files(root)
+        handoff_path = root / "consensus_handoff_contract.json"
+        
+        with open(handoff_path, "r") as f:
+            handoff = json.load(f)
+
+        # Case 1: ID mismatch
+        h_mismatch = handoff.copy()
+        h_mismatch["included_comparison_ids"] = ["c1"]
+        h_mismatch["comparison_decision_refs"] = [{"comparison_id": "c1", "decision_status": "consensus"}]
+        # decision_support remains empty []
+        with open(handoff_path, "w") as f:
+            json.dump(h_mismatch, f)
+        
+        res = validate_consensus_bundle(root)
+        assert "decision_support_count_mismatch" in [i.code for i in res.issues]
+        assert "decision_support_comparison_id_mismatch" in [i.code for i in res.issues]
+
+        # Case 2: Status mismatch
+        h_status = handoff.copy()
+        h_status["included_comparison_ids"] = ["c1"]
+        h_status["comparison_decision_refs"] = [{"comparison_id": "c1", "decision_status": "consensus"}]
+        h_status["decision_support"]["decision_evidence_refs"] = [{
+            "comparison_id": "c1",
+            "decision_status": "abstain", # mismatch
+            "reason_codes": [],
+            "evidence_stats": {
+                "support_margin": 0, "has_conflict": False, "has_weak_support": True,
+                "n_supporting_references": 0, "n_conflicting_references": 0, "n_competing_candidates": 0
+            },
+            "artifact_refs": {
+                "consensus_manifest_path": "consensus_manifest.json",
+                "consensus_handoff_contract_path": "consensus_handoff_contract.json",
+                "consensus_decisions_json_path": "consensus_decisions.json",
+                "evidence_profiles_json_path": "evidence_profiles.json",
+                "consensus_decisions_csv_path": "consensus_decisions.csv",
+                "report_summary_md_path": "report_summary.md"
+            }
+        }]
+        h_status["decision_support"]["summary"]["n_decision_refs"] = 1
+        with open(handoff_path, "w") as f:
+            json.dump(h_status, f)
+        
+        res = validate_consensus_bundle(root)
+        assert "decision_support_status_mismatch" in [i.code for i in res.issues]
