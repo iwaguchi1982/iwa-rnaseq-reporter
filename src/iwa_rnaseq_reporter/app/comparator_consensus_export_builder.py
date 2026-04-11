@@ -3,7 +3,7 @@ import json
 import io
 import zipfile
 import pandas as pd
-from typing import Tuple, List, Optional
+from typing import Tuple, List, Optional, Any
 from .comparator_consensus import ComparatorConsensusContext
 from .comparator_consensus_export import (
     ComparatorConsensusManifestSpec,
@@ -92,6 +92,46 @@ def build_consensus_export_payload(
         execution_config=exec_cfg
     )
 
+def _format_yes_no(val: bool) -> str:
+    return "yes" if val else "no"
+
+def _format_margin(val: Optional[float]) -> str:
+    if val is None:
+        return "-"
+    return f"{val:.3f}"
+
+def _format_reason_codes(codes: List[str]) -> str:
+    if not codes:
+        return "-"
+    return ", ".join(codes)
+
+def _summarize_comparison_ids_by_status(
+    decisions: Tuple[Any, ...],
+    max_items: int = 3
+) -> dict[str, str]:
+    buckets = {
+        "consensus": [],
+        "no_consensus": [],
+        "insufficient_evidence": [],
+        "abstain": []
+    }
+    for d in decisions:
+        if d.decision_status in buckets:
+            buckets[d.decision_status].append(d.comparison_id)
+            
+    summary = {}
+    for status, ids in buckets.items():
+        n = len(ids)
+        if n == 0:
+            summary[status] = "0"
+        else:
+            display_ids = ids[:max_items]
+            ids_str = ", ".join(display_ids)
+            if n > max_items:
+                ids_str += ", ..."
+            summary[status] = f"{n} ({ids_str})"
+    return summary
+
 def build_consensus_report_summary_md(
     payload: ComparatorConsensusExportPayload
 ) -> str:
@@ -108,17 +148,55 @@ def build_consensus_report_summary_md(
         f"- Clear Consensus Reached: **{sum_spec.n_consensus}**",
         f"- No Consensus (Conflicts/Near-ties): {sum_spec.n_no_consensus}",
         f"- Insufficient Evidence: {sum_spec.n_insufficient_evidence}",
+        f"- Abstained / Withheld: {sum_spec.n_abstain}",
         f"",
         f"## Decision Details",
-        f"| Comparison ID | Status | Decided Label | Margin |",
-        f"| :--- | :--- | :--- | :--- |"
+        f"| Comparison ID | Status | Decided Label | Margin | Support | Conflict | Weak Support | Reason |",
+        f"| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |"
     ]
     
+    # Pre-map decisions and profiles for efficient lookup
+    dec_map = {d.comparison_id: d for d in payload.decisions}
+    prof_map = {p.comparison_id: p for p in payload.evidence_profiles}
+
     for row in payload.decision_rows:
+        comp_id = row.comparison_id
+        dec = dec_map.get(comp_id)
+        prof = prof_map.get(comp_id)
+
+        # Basic fields from row (fallback-friendly)
         label = row.decided_label_display if row.decided_label_display else "-"
-        margin = f"{row.support_margin:.3f}" if row.support_margin is not None else "-"
-        lines.append(f"| {row.comparison_id} | `{row.decision_status}` | {label} | {margin} |")
+        status = f"`{row.decision_status}`"
         
+        # Extended fields with fallbacks
+        margin = _format_margin(row.support_margin)
+        support = str(len(prof.supporting_references)) if prof else "0"
+        conflict = _format_yes_no(prof.has_conflict) if prof else "no"
+        weak = _format_yes_no(prof.has_weak_support) if prof else "yes"
+        reason = _format_reason_codes(dec.reason_codes) if dec else "-"
+
+        lines.append(f"| {comp_id} | {status} | {label} | {margin} | {support} | {conflict} | {weak} | {reason} |")
+        
+    # v0.19.4.4: Decision Support Sections
+    snapshot = _summarize_comparison_ids_by_status(payload.decisions)
+    lines.extend([
+        f"",
+        f"## Decision Support Snapshot",
+        f"- Consensus: {snapshot['consensus']}",
+        f"- No Consensus: {snapshot['no_consensus']}",
+        f"- Insufficient Evidence: {snapshot['insufficient_evidence']}",
+        f"- Abstain: {snapshot['abstain']}",
+        f"",
+        f"## Decision Support Quick Lookup",
+        f"- `consensus`: clear label selected; check top supporting refs when needed",
+        f"- `no_consensus`: conflict or near-tie; inspect competing evidence",
+        f"- `insufficient_evidence`: not enough support to decide confidently",
+        f"- `abstain`: intentionally withheld / unresolved under current rules",
+        f"",
+        f"Use `consensus_decisions.json` and `evidence_profiles.json` for deep detail.",
+        f"Top supporting/conflicting refs are available in the handoff decision_support block."
+    ])
+
     # v0.19.3 Execution Config Section
     if payload.execution_config:
         cfg = payload.execution_config
