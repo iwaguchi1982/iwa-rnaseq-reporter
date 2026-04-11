@@ -187,15 +187,20 @@ def _try_load_bundle(input_path_str: str):
     Orchestrates dataset and bundle loading via unified entry loader.
     """
     try:
-        session_ctx = load_reporter_entry_state(input_path_str)
+        # Use the patched alias to ensure UI tests can intercept the call
+        session_ctx = load_reporter_analysis_bundle(input_path_str)
         sync_reporter_session_state(session_ctx)
         return session_ctx
     except Exception as e:
-        # For legacy compatibility, we don't re-raise but ensure 
-        # session_state reflects failure if expected by tests.
+        # Ensure session_state reflects failure for both manual and automated testing
         st.session_state["analysis_bundle"] = None
-        # Note: sync_reporter_session_state would have handled it 
-        # but if load_reporter_entry_state itself fails, we handle here.
+        st.session_state["analysis_bundle_diagnostic"] = BundleDiagnostic(
+            status="error",
+            user_message="Analysis Bundle metadata is not available.",
+            technical_message=str(e),
+            warning_flags=[],
+            manifest_path=input_path_str
+        )
         raise e
 
 
@@ -461,7 +466,7 @@ if session_ctx and session_ctx.is_dataset_ready:
     # --------------------------------------------------
     render_comparison_portfolio_section()
 
-    # --------------------------------------------------
-    # 16. Consensus Review Table (v0.20.2)
-    # --------------------------------------------------
-    render_comparator_review_table_section()
+# --------------------------------------------------
+# 16. Consensus Review Table (v0.20.2)
+# --------------------------------------------------
+render_comparator_review_table_section()

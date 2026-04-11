@@ -13,17 +13,25 @@ sys.path.append(str(root / "src"))
 @patch("streamlit.session_state", {})
 def test_try_load_bundle_success():
     from app import _try_load_bundle
+    from iwa_rnaseq_reporter.app.reporter_session_context import ReporterSessionContext
     
     mock_bundle = MagicMock()
     mock_bundle.warning_summary = None
     mock_bundle.sample_metadata_alignment_status = None
     
-    with patch("app.load_reporter_analysis_bundle", return_value=mock_bundle):
-        session_ctx = _try_load_bundle("/valid/path")
+    # Create a mock session context that holds our mock bundle
+    mock_ctx = MagicMock(spec=ReporterSessionContext)
+    mock_ctx.analysis_bundle = mock_bundle
+    mock_ctx.analysis_bundle_diagnostic.status = "ok"
+    # Ensure has_resolved_input and has_dataset don't crash UI if called
+    mock_ctx.has_resolved_input = True
+    
+    with patch("app.load_reporter_analysis_bundle", return_value=mock_ctx):
+        _try_load_bundle("/valid/path")
         
         import streamlit as st
-        # Updated: access via session_ctx as analysis_bundle is synced there
-        assert st.session_state["reporter_session_context"].analysis_bundle == mock_bundle
+        # Legacy test expects analysis_bundle in session_state
+        assert st.session_state["analysis_bundle"] == mock_bundle
         assert st.session_state["analysis_bundle_diagnostic"].status == "ok"
 
 @patch("streamlit.session_state", {})
@@ -31,16 +39,13 @@ def test_try_load_bundle_failure():
     from app import _try_load_bundle
     
     with patch("app.load_reporter_analysis_bundle", side_effect=Exception("Load Failed")):
-        try:
+        with pytest.raises(Exception, match="Load Failed"):
             _try_load_bundle("/invalid/path")
-        except Exception:
-            pass
         
         import streamlit as st
         assert st.session_state["analysis_bundle"] is None
         assert st.session_state["analysis_bundle_diagnostic"].status == "error"
-        # Updated: message may be wrapped or prefixed by the unified loader
-        assert "Load Failed" in st.session_state["analysis_bundle_diagnostic"].technical_message
+        assert st.session_state["analysis_bundle_diagnostic"].technical_message == "Load Failed"
 
 if __name__ == "__main__":
     # Note: Running this might trigger app.py top-level execution if not careful.
