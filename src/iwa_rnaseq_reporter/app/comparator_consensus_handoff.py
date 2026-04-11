@@ -3,6 +3,7 @@ from typing import Optional, Tuple
 from .comparator_consensus import ComparatorConsensusSummarySpec
 from .comparator_consensus_export import ProvenanceSpec
 from .comparator_execution_config import ComparatorExecutionConfigSpec
+from .comparator_decision_support import ComparatorDecisionSupportPayload
 
 @dataclass(frozen=True)
 class ComparatorConsensusBundleRefSpec:
@@ -45,3 +46,5 @@ class ComparatorConsensusHandoffPayload:
     provenance: Optional[ProvenanceSpec] = None
     # v0.19.3: Execution config contract
     execution_config: Optional[ComparatorExecutionConfigSpec] = None
+    # v0.19.4.1: Compact decision support contract
+    decision_support: Optional[ComparatorDecisionSupportPayload] = None
