@@ -108,6 +108,16 @@ def build_review_session_summary(
         decision_status_counts=counts
     )
 
+def _validate_unique_ids(ids: List[str], label: str):
+    """
+    Ensure all IDs in the list are unique. Raises ValueError on duplicate.
+    """
+    seen = set()
+    for comp_id in ids:
+        if comp_id in seen:
+            raise ValueError(f"Duplicate comparison_id detected in {label}: '{comp_id}'")
+        seen.add(comp_id)
+
 def build_comparator_review_session_context(
     import_ctx: ConsensusBundleImportContext
 ) -> ComparatorReviewSessionContext:
@@ -125,14 +135,21 @@ def build_comparator_review_session_context(
         
     ds_refs = ds.get("decision_evidence_refs", [])
     
+    # v0.20.1a Hardening: Validate uniqueness to prevent silent drop
+    included_ids = handoff.get("included_comparison_ids", [])
+    if included_ids:
+        _validate_unique_ids(included_ids, "included_comparison_ids")
+        
+    evidence_ids = [r.get("comparison_id") for r in ds_refs if r.get("comparison_id")]
+    _validate_unique_ids(evidence_ids, "decision_support.decision_evidence_refs")
+
     # v0.20.1 Ordering: Follow handoff included_comparison_ids if available (Deterministic)
     # The decision_evidence_refs are usually already in sync, but we ensure robustness.
     ref_map = {r.get("comparison_id"): r for r in ds_refs if r.get("comparison_id")}
     
-    included_ids = handoff.get("included_comparison_ids", [])
     if not included_ids:
         # Fallback to current refs order
-        included_ids = [r.get("comparison_id") for r in ds_refs if r.get("comparison_id")]
+        included_ids = evidence_ids
     
     rows: List[ComparatorReviewRowSpec] = []
     issues: List[str] = []

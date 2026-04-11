@@ -146,3 +146,45 @@ def test_build_review_session_missing_comparison_handling():
     assert len(session.rows) == 1
     assert session.rows[0].comparison_id == "C1"
     assert any("MISSING" in issue for issue in session.issues)
+
+def test_build_review_session_fails_on_duplicate_evidence_refs():
+    """
+    Verify that duplicate comparison_ids in decision_evidence_refs 
+    trigger a ValueError (Fail-fast).
+    Corresponds to spec 5-1.
+    """
+    handoff = {
+        "decision_support": {
+            "decision_evidence_refs": [
+                {"comparison_id": "C1", "decision_status": "consensus"},
+                {"comparison_id": "C1", "decision_status": "no_consensus"}  # Duplicate
+            ]
+        }
+    }
+    import_ctx = ConsensusBundleImportContext(
+        manifest={}, handoff_contract=handoff, paths=MagicMock(), contract_info=MagicMock()
+    )
+    
+    with pytest.raises(ValueError, match="Duplicate comparison_id detected in decision_support.decision_evidence_refs: 'C1'"):
+        build_comparator_review_session_context(import_ctx)
+
+def test_build_review_session_fails_on_duplicate_included_ids():
+    """
+    Verify that duplicate comparison_ids in included_comparison_ids 
+    trigger a ValueError (Fail-fast).
+    Corresponds to spec 5-2.
+    """
+    handoff = {
+        "included_comparison_ids": ["C1", "C1"],
+        "decision_support": {
+            "decision_evidence_refs": [
+                {"comparison_id": "C1", "decision_status": "consensus"}
+            ]
+        }
+    }
+    import_ctx = ConsensusBundleImportContext(
+        manifest={}, handoff_contract=handoff, paths=MagicMock(), contract_info=MagicMock()
+    )
+    
+    with pytest.raises(ValueError, match="Duplicate comparison_id detected in included_comparison_ids: 'C1'"):
+        build_comparator_review_session_context(import_ctx)
