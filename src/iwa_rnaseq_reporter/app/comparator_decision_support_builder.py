@@ -55,6 +55,19 @@ def build_decision_evidence_stats(profile: Optional[ConsensusEvidenceProfileSpec
         n_competing_candidates=len(profile.competing_candidates)
     )
 
+def _extract_integrated_score(ref: any) -> Optional[float]:
+    """
+    Defensively extract the integrated score from various reference types.
+    Handles both direct float field (v0.19.4) and nested object field (v0.19.3).
+    """
+    val = getattr(ref, 'integrated_score', None)
+    if val is None:
+        return 0.0
+    if isinstance(val, (int, float)):
+        return float(val)
+    # Fallback for nested object structure
+    return getattr(val, 'integrated_score', 0.0)
+
 def build_top_reference_refs(
     refs: Iterable, 
     max_refs: int = DEFAULT_MAX_TOP_REFS
@@ -65,10 +78,9 @@ def build_top_reference_refs(
     Corresponds to spec 6.3.
     """
     # Defensive sorting: score desc, then rank asc
-    # refs expected to be ComparatorRankedReferenceSpec (v0.19.3 structure)
     sorted_refs = sorted(
         refs, 
-        key=lambda r: (-(r.integrated_score.integrated_score if r.integrated_score else 0.0), (r.rank or 999), r.reference_dataset_id, r.reference_comparison_id)
+        key=lambda r: (-(_extract_integrated_score(r)), (r.rank or 999), r.reference_dataset_id, r.reference_comparison_id)
     )
     
     selected = sorted_refs[:max_refs]
@@ -77,9 +89,9 @@ def build_top_reference_refs(
         DecisionTopReferenceRefSpec(
             reference_dataset_id=r.reference_dataset_id,
             reference_comparison_id=r.reference_comparison_id,
-            label_key=r.label_key if hasattr(r, 'label_key') else None,
-            label_display=r.label_display if hasattr(r, 'label_display') else None,
-            integrated_score=r.integrated_score.integrated_score if r.integrated_score else None,
+            label_key=getattr(r, 'label_key', None),
+            label_display=getattr(r, 'label_display', None),
+            integrated_score=_extract_integrated_score(r),
             rank=r.rank
         )
         for r in selected
