@@ -11,6 +11,7 @@ from .comparator_consensus_handoff import (
     ComparatorConsensusHandoffPayload
 )
 from .version_helper import get_package_version
+from .comparator_decision_support_builder import build_decision_support_payload
 
 def build_consensus_handoff_payload(
     context: ComparatorConsensusContext,
@@ -37,7 +38,7 @@ def build_consensus_handoff_payload(
         if d.decision_status == "consensus" and d.decided_label_key
     )))
     
-    # 3. Build Comparison Refs
+    # 3. Build Comparison Refs (Legacy/Quick summary)
     comparison_refs = [
         ComparatorConsensusComparisonRefSpec(
             comparison_id=d.comparison_id,
@@ -48,6 +49,9 @@ def build_consensus_handoff_payload(
         for d in context.decisions
     ]
     
+    # 4. v0.19.4.2: Build Decision Support Payload (Compact evidence lookup)
+    support_payload = build_decision_support_payload(context, bundle_refs)
+
     # v0.19.2a Harmonized timestamp
     gen_at = generated_at
     if gen_at is None:
@@ -76,7 +80,8 @@ def build_consensus_handoff_payload(
         summary=context.summary,
         generated_at=gen_at,
         provenance=prov,
-        execution_config=exec_cfg
+        execution_config=exec_cfg,
+        decision_support=support_payload
     )
 
 def serialize_handoff_contract(payload: ComparatorConsensusHandoffPayload) -> str:
