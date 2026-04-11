@@ -334,13 +334,15 @@ def render_comparator_review_table_section():
                     except Exception as e:
                         st.error(f"Failed to clear: {e}")
 
-            # F. Review Export / Handoff (v0.20.5)
+            # F. Review Export / Handoff (v0.20.5a unified identity)
             st.divider()
             st.subheader("Review Export & Handoff")
             st.markdown("Package current review results into a formal delivery bundle.")
             
             try:
-                # 1. Prepare Metadata for Preview/ID
+                # 1. Prepare Metadata for Preview/ID (Generated ONCE here)
+                # Use a stable key in session state or generate per render
+                # For reproducibility in preview, we generate here and reuse.
                 review_run_id = build_comparator_review_run_id(session_ctx.source_consensus_run_id)
                 bundle_filename = build_comparator_review_bundle_filename(review_run_id)
                 
@@ -350,8 +352,14 @@ def render_comparator_review_table_section():
                 )
                 
                 # 2. Download Button
-                # Generate bundle bytes
-                bundle_bytes = build_comparator_review_export_bundle(import_ctx, session_ctx, ann_store)
+                # Generate bundle bytes using the PRECISE ID we just made
+                bundle_bytes = build_comparator_review_export_bundle(
+                    import_ctx, 
+                    session_ctx, 
+                    ann_store,
+                    review_run_id=review_run_id,
+                    review_bundle_filename=bundle_filename
+                )
                 
                 st.download_button(
                     label="📥 Download Review Bundle (ZIP)",

@@ -131,14 +131,18 @@ def build_comparator_review_handoff_payload(
 ) -> ComparatorReviewHandoffPayload:
     """Build the compact handoff contract for downstream integration."""
     
-    # 1. Source Refs Snapshot
+    # 1. Source Refs Snapshot (spec 113-128: Hardened to eliminate absolute paths)
+    # Attempt to pull relative names from source handoff bundle_refs if available
+    s_handoff = import_ctx.handoff_contract if import_ctx.handoff_contract else {}
+    s_b_refs = s_handoff.get("bundle_refs", {})
+    
     s_refs = ComparatorReviewSourceRefSpec(
         source_consensus_run_id=session_ctx.source_consensus_run_id,
         source_bundle_filename=import_ctx.manifest.get("source_bundle_filename") if import_ctx.manifest else None,
-        source_consensus_manifest_path=str(import_ctx.paths.manifest_path) if import_ctx.paths else None,
-        source_consensus_handoff_contract_path=str(import_ctx.paths.handoff_contract_path) if import_ctx.paths and import_ctx.paths.handoff_contract_path else None,
-        source_consensus_decisions_json_path=str(import_ctx.paths.decisions_json_path) if import_ctx.paths and import_ctx.paths.decisions_json_path else None,
-        source_evidence_profiles_json_path=str(import_ctx.paths.evidence_profiles_path) if import_ctx.paths and import_ctx.paths.evidence_profiles_path else None
+        source_consensus_manifest_path=s_b_refs.get("consensus_manifest_path", "consensus_manifest.json"),
+        source_consensus_handoff_contract_path=s_b_refs.get("consensus_handoff_contract_path", "consensus_handoff_contract.json"),
+        source_consensus_decisions_json_path=s_b_refs.get("consensus_decisions_path"),
+        source_evidence_profiles_json_path=s_b_refs.get("evidence_profiles_path")
     )
     
     # 2. Bundle Refs (Relative)
@@ -239,12 +243,18 @@ def build_comparator_review_summary_md(export_payload: ComparatorReviewExportPay
 def build_comparator_review_export_bundle(
     import_ctx: ConsensusBundleImportContext,
     session_ctx: ComparatorReviewSessionContext,
-    annotation_store: ComparatorReviewAnnotationStore
+    annotation_store: ComparatorReviewAnnotationStore,
+    review_run_id: Optional[str] = None,
+    review_bundle_filename: Optional[str] = None
 ) -> bytes:
-    """Orchestrate the creation of the full review bundle ZIP archive."""
-    
-    review_run_id = build_comparator_review_run_id(session_ctx.source_consensus_run_id)
-    review_bundle_filename = build_comparator_review_bundle_filename(review_run_id)
+    """
+    Orchestrate the creation of the full review bundle ZIP archive.
+    Unified identity (run_id/filename) can be provided externally.
+    """
+    if review_run_id is None:
+        review_run_id = build_comparator_review_run_id(session_ctx.source_consensus_run_id)
+    if review_bundle_filename is None:
+        review_bundle_filename = build_comparator_review_bundle_filename(review_run_id)
     
     # 1. Build Payloads
     export_payload = build_comparator_review_export_payload(import_ctx, session_ctx, annotation_store, review_run_id)

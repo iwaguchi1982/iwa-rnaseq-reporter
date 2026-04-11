@@ -15,7 +15,15 @@ class ComparatorReviewBundleRefSpec:
 
 @dataclass(frozen=True)
 class ComparatorReviewSourceRefSpec:
-    """Snapshot of references back to the original consensus bundle."""
+    """
+    Logical snapshot of references back to the original source consensus bundle.
+    
+    IMPORTANT: 
+    - These values are NOT runtime filesystem paths.
+    - They are bundle-relative artifact references or stable artifact names.
+    - Absolute paths (e.g., starting with '/', or containing local user home dirs) 
+      are strictly forbidden to ensure contract portability.
+    """
     source_consensus_run_id: str
     source_bundle_filename: Optional[str] = None
     source_consensus_manifest_path: Optional[str] = None

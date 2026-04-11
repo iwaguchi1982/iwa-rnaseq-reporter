@@ -20,12 +20,12 @@ class ComparatorReviewImportPaths:
 @dataclass(frozen=True)
 class ComparatorReviewImportContext:
     """Read-only context for an imported review bundle."""
-    manifest: ComparatorReviewExportManifestSpec
-    handoff_contract: ComparatorReviewHandoffPayload
+    manifest: Optional[ComparatorReviewExportManifestSpec]
+    handoff_contract: Optional[ComparatorReviewHandoffPayload]
     review_rows: Tuple[ComparatorReviewExportRowSpec, ...]
-    summary: ComparatorReviewSummarySpec
+    summary: Optional[ComparatorReviewSummarySpec]
     summary_md: str
-    paths: ComparatorReviewImportPaths
+    paths: Optional[ComparatorReviewImportPaths]
     provenance: Dict[str, Any] = field(default_factory=dict)
     issues: Tuple[str, ...] = field(default_factory=tuple)
 

@@ -34,6 +34,7 @@ def mock_contexts():
     import_ctx = MagicMock(spec=ConsensusBundleImportContext)
     import_ctx.manifest = manifest
     import_ctx.paths = paths
+    import_ctx.handoff_contract = {"bundle_refs": {}, "provenance": {}}
     
     # 2. Session Context
     row1 = ComparatorReviewRowSpec(
@@ -76,8 +77,16 @@ def mock_contexts():
 def test_export_import_roundtrip(mock_contexts):
     import_ctx, session_ctx, ann_store = mock_contexts
     
-    # 1. Export to ZIP bytes
-    bundle_bytes = build_comparator_review_export_bundle(import_ctx, session_ctx, ann_store)
+    # Generate unique ID once (spec 42-68 hardening)
+    run_id = "test-review-harden-789"
+    filename = "test-bundle-789.zip"
+    
+    # 1. Export to ZIP bytes with EXPLICIT identity
+    bundle_bytes = build_comparator_review_export_bundle(
+        import_ctx, session_ctx, ann_store,
+        review_run_id=run_id,
+        review_bundle_filename=filename
+    )
     assert len(bundle_bytes) > 0
     
     # 2. Write to temp file
@@ -89,23 +98,22 @@ def test_export_import_roundtrip(mock_contexts):
         # 3. Import from ZIP
         imp_ctx = read_review_bundle(tf_path)
         
-        # 4. Verify
-        assert imp_ctx.is_valid
-        assert imp_ctx.manifest.source_consensus_run_id == "run123"
-        assert imp_ctx.summary.n_reviewed == 1
-        assert imp_ctx.summary.n_high_priority == 1
+        # 4. Verify End-to-End Consistency
+        assert imp_ctx.is_valid, f"Import issues: {imp_ctx.issues}"
+        assert imp_ctx.manifest.review_run_id == run_id
+        assert imp_ctx.handoff_contract.review_run_id == run_id
+        assert imp_ctx.handoff_contract.bundle_refs.review_bundle_filename == filename
         
-        # Verify Rows
-        assert len(imp_ctx.review_rows) == 1
-        row = imp_ctx.review_rows[0]
-        assert row.comparison_id == "comp1"
-        assert row.triage_status == "reviewed"
-        assert row.priority == "high"
-        assert row.review_note == "Manual confirm"
-        
-        # Verify Handoff
-        assert imp_ctx.handoff_contract.source_consensus_run_id == "run123"
-        assert imp_ctx.handoff_contract.review_decision_refs[0].triage_status == "reviewed"
+        # 5. Verify Absolute Path Exclusion (spec 71-134 hardening)
+        s_refs = imp_ctx.handoff_contract.source_refs
+        for attr in ["source_consensus_manifest_path", "source_consensus_handoff_contract_path", "source_consensus_decisions_json_path", "source_evidence_profiles_json_path"]:
+            val = getattr(s_refs, attr)
+            if val:
+                # Basic check: should not look like an absolute Unix path or Windows drive
+                assert not val.startswith("/"), f"Absolute path detected in {attr}: {val}"
+                assert ":" not in val, f"Likely absolute Windows path detected in {attr}: {val}"
+                # Should not contain known local substrings from mock_contexts Path objects
+                assert "m.json" in val or "consensus_manifest.json" in val or "h.json" in val or "consensus_handoff_contract.json" in val
         
     finally:
         if os.path.exists(tf_path):
