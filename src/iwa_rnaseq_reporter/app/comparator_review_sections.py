@@ -14,10 +14,19 @@ from iwa_rnaseq_reporter.app.comparator_review_table_builder import (
     build_comparator_review_table_dataframe
 )
 from iwa_rnaseq_reporter.app.comparator_review_drilldown_builder import build_comparator_review_drilldown_context
+from iwa_rnaseq_reporter.app.comparator_review_annotation import ComparatorReviewAnnotationSpec, ComparatorReviewAnnotationStore
+from iwa_rnaseq_reporter.app.comparator_review_annotation_builder import (
+    build_empty_comparator_review_annotation_store,
+    upsert_comparator_review_annotation,
+    remove_comparator_review_annotation,
+    get_comparator_review_annotation,
+    build_comparator_review_annotation_summary
+)
 
-def _render_summary_counters(ctx: ComparatorReviewTableContext):
+def _render_summary_counters(ctx: ComparatorReviewTableContext, ann_store: Optional[ComparatorReviewAnnotationStore] = None):
     """
     Display session and filtered summary metrics.
+    Incl. v0.20.4 annotation progress if store provided.
     """
     col1, col2, col3, col4 = st.columns(4)
     sum_f = ctx.summary
@@ -36,7 +45,19 @@ def _render_summary_counters(ctx: ComparatorReviewTableContext):
         
     with col4:
         st.metric("Weak Support", f"{sum_f.n_with_weak_support}")
-        # Note: can add more if space allows or use a second row as per spec 347.
+
+    if ann_store and ann_store.summary:
+        st.markdown("---")
+        st.markdown("**Review Progress & Annotation Summary**")
+        a1, a2, a3, a4 = st.columns(4)
+        s = ann_store.summary
+        a1.metric("Annotated", f"{s.n_annotated_rows}")
+        a1.metric("Unreviewed", f"{s.n_unreviewed}")
+        a2.metric("Reviewed", f"{s.n_reviewed}")
+        a2.metric("Flagged", f"{s.n_flagged}")
+        a3.metric("Handoff Candidates", f"{s.n_handoff_candidate}")
+        a3.metric("High Priority", f"{s.n_high_priority}")
+        a4.metric("Follow-up Required", f"{s.n_follow_up_required}")
 
 def render_comparator_review_table_section():
     """
@@ -62,6 +83,10 @@ def render_comparator_review_table_section():
                 st.session_state["comparator_review_import_context"] = import_ctx
                 st.session_state["comparator_review_session_context"] = session_ctx
                 st.session_state["comparator_review_bundle_manifest_path"] = manifest_path
+                
+                # v0.20.4: Initialize fresh annotation store for the new session
+                st.session_state["comparator_review_annotation_store"] = build_empty_comparator_review_annotation_store(session_ctx)
+                
                 st.success(f"Successfully loaded {len(session_ctx.rows)} comparisons")
             except Exception as e:
                 st.error(f"Failed to load bundle: {e}")
@@ -120,9 +145,10 @@ def render_comparator_review_table_section():
     
     table_ctx = build_comparator_review_table_context(session_ctx, filters)
     
-    # Render Summary (spec 335-353)
+    # Render Summary (spec 335-353, v0.20.4 extended)
     st.divider()
-    _render_summary_counters(table_ctx)
+    ann_store: Optional[ComparatorReviewAnnotationStore] = st.session_state.get("comparator_review_annotation_store")
+    _render_summary_counters(table_ctx, ann_store)
     st.divider()
     
     # Render Table (spec 355-364)
@@ -219,6 +245,85 @@ def render_comparator_review_table_section():
             if drilldown_ctx.issues:
                 for issue in drilldown_ctx.issues:
                     st.error(f"Issue: {issue}")
+
+            # E. Review Annotation Form (v0.20.4)
+            st.divider()
+            st.subheader("Reviewer Annotation & Triage")
+            
+            # Fetch current annotation if exists
+            current_ann = None
+            if ann_store:
+                current_ann = get_comparator_review_annotation(ann_store, selected_comp_id)
+            
+            if current_ann:
+                st.info(f"**Current Status:** {current_ann.triage_status.upper()} | **Priority:** {current_ann.priority.upper()}")
+                if current_ann.review_note:
+                    st.markdown(f"> **Note:** {current_ann.review_note}")
+                if current_ann.follow_up_required:
+                    st.warning("Needs follow-up.")
+
+            with st.form("annotation_form", clear_on_submit=False):
+                # Default values from current annotation
+                def_status = "unreviewed"
+                def_priority = "normal"
+                def_note = ""
+                def_follow = False
+                
+                if current_ann:
+                    def_status = current_ann.triage_status
+                    def_priority = current_ann.priority
+                    def_note = current_ann.review_note
+                    def_follow = current_ann.follow_up_required
+
+                t_col1, t_col2 = st.columns(2)
+                with t_col1:
+                    t_status = st.selectbox(
+                        "Triage Status",
+                        options=["unreviewed", "flagged", "reviewed", "handoff_candidate"],
+                        index=["unreviewed", "flagged", "reviewed", "handoff_candidate"].index(def_status),
+                        format_func=lambda s: s.replace("_", " ").title()
+                    )
+                with t_col2:
+                    t_priority = st.selectbox(
+                        "Priority",
+                        options=["normal", "high"],
+                        index=["normal", "high"].index(def_priority),
+                        format_func=lambda s: s.title()
+                    )
+                
+                t_follow = st.checkbox("Follow-up Required", value=def_follow)
+                t_note = st.text_area("Review Note / Context", value=def_note, placeholder="Add research notes or justification for triage...")
+                
+                save_col, clear_col, _ = st.columns([1, 1, 2])
+                with save_col:
+                    save_btn = st.form_submit_button("Save Annotation")
+                with clear_col:
+                    clear_btn = st.form_submit_button("Clear Annotation")
+                    
+                if save_btn:
+                    new_ann = ComparatorReviewAnnotationSpec(
+                        comparison_id=selected_comp_id,
+                        triage_status=t_status,
+                        priority=t_priority,
+                        review_note=t_note,
+                        follow_up_required=t_follow
+                    )
+                    try:
+                        new_store = upsert_comparator_review_annotation(ann_store, session_ctx, new_ann)
+                        st.session_state["comparator_review_annotation_store"] = new_store
+                        st.success(f"Annotation saved for {selected_comp_id}.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Failed to save: {e}")
+                        
+                if clear_btn:
+                    try:
+                        new_store = remove_comparator_review_annotation(ann_store, session_ctx, selected_comp_id)
+                        st.session_state["comparator_review_annotation_store"] = new_store
+                        st.success(f"Annotation cleared for {selected_comp_id}.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Failed to clear: {e}")
 
         except Exception as e:
             st.error(f"Failed to build drilldown details: {e}")
