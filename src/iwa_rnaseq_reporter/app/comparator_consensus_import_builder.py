@@ -193,9 +193,48 @@ def _validate_execution_config(
         for f in c_fields:
             if f not in c:
                 issues.append(ConsensusBundleValidationIssueSpec(
-                    "error", "missing_consensus_field", 
-                    f"Consensus parameter '{f}' is missing", 
+                    "error", "missing_consensus_field",
+                    f"Consensus parameter '{f}' is missing",
                     field_name=f"{obj_label}.execution_config.consensus.{f}"
+                ))
+
+def _validate_top_reference_refs(
+    top_refs: Any,
+    field_prefix: str,
+    issues: List[ConsensusBundleValidationIssueSpec]
+):
+    """
+    Validate optional nested top reference refs if present.
+    They are optional, but when present must follow the compact contract.
+    """
+    if not isinstance(top_refs, (list, tuple)):
+        issues.append(ConsensusBundleValidationIssueSpec(
+            "error",
+            "invalid_top_reference_refs_type",
+            f"Top reference refs at '{field_prefix}' must be a list or tuple",
+            field_name=field_prefix
+        ))
+        return
+
+    for j, item in enumerate(top_refs):
+        item_prefix = f"{field_prefix}[{j}]"
+
+        if not isinstance(item, dict):
+            issues.append(ConsensusBundleValidationIssueSpec(
+                "error",
+                "invalid_top_reference_ref_type",
+                f"Top reference ref at '{item_prefix}' must be a dictionary",
+                field_name=item_prefix
+            ))
+            continue
+
+        for required_field in ("reference_dataset_id", "reference_comparison_id"):
+            if required_field not in item:
+                issues.append(ConsensusBundleValidationIssueSpec(
+                    "error",
+                    "missing_top_reference_ref_field",
+                    f"Field '{required_field}' is missing in '{item_prefix}'",
+                    field_name=f"{item_prefix}.{required_field}"
                 ))
 
 def _validate_decision_support_block(ds: Any, obj_label: str, issues: List[ConsensusBundleValidationIssueSpec]):
@@ -205,8 +244,8 @@ def _validate_decision_support_block(ds: Any, obj_label: str, issues: List[Conse
     """
     if not isinstance(ds, dict):
         issues.append(ConsensusBundleValidationIssueSpec(
-            "error", "invalid_decision_support_type", 
-            f"Decision support in {obj_label} must be a dictionary", 
+            "error", "invalid_decision_support_type",
+            f"Decision support in {obj_label} must be a dictionary",
             field_name=f"{obj_label}.decision_support"
         ))
         return
@@ -216,15 +255,15 @@ def _validate_decision_support_block(ds: Any, obj_label: str, issues: List[Conse
     for f in core_fields:
         if f not in ds:
             issues.append(ConsensusBundleValidationIssueSpec(
-                "error", "missing_decision_support_field", 
-                f"Field '{f}' is missing in {obj_label}.decision_support", 
+                "error", "missing_decision_support_field",
+                f"Field '{f}' is missing in {obj_label}.decision_support",
                 field_name=f"{obj_label}.decision_support.{f}"
             ))
 
     # 2. Schema check
     if ds.get("schema_name") != "ComparatorDecisionSupportPayload":
         issues.append(ConsensusBundleValidationIssueSpec(
-            "error", "invalid_decision_support_schema", 
+            "error", "invalid_decision_support_schema",
             f"Expected schema 'ComparatorDecisionSupportPayload', got '{ds.get('schema_name')}'",
             field_name=f"{obj_label}.decision_support.schema_name"
         ))
@@ -238,12 +277,18 @@ def _validate_decision_support_block(ds: Any, obj_label: str, issues: List[Conse
     # 3. Summary check
     summary = ds.get("summary")
     if isinstance(summary, dict):
-        sum_fields = ["n_decision_refs", "n_consensus", "n_abstain", "n_no_consensus", "n_insufficient_evidence"]
+        sum_fields = [
+            "n_decision_refs",
+            "n_consensus",
+            "n_abstain",
+            "n_no_consensus",
+            "n_insufficient_evidence",
+        ]
         for f in sum_fields:
             if f not in summary:
                 issues.append(ConsensusBundleValidationIssueSpec(
-                    "error", "missing_decision_support_summary_field", 
-                    f"Summary field '{f}' is missing", 
+                    "error", "missing_decision_support_summary_field",
+                    f"Summary field '{f}' is missing",
                     field_name=f"{obj_label}.decision_support.summary.{f}"
                 ))
 
@@ -252,69 +297,82 @@ def _validate_decision_support_block(ds: Any, obj_label: str, issues: List[Conse
     if isinstance(refs, (list, tuple)):
         for i, ref in enumerate(refs):
             ref_label = f"{obj_label}.decision_support.decision_evidence_refs[{i}]"
-            required_ref_fields = ["comparison_id", "decision_status", "reason_codes", "evidence_stats", "artifact_refs"]
+
+            if not isinstance(ref, dict):
+                issues.append(ConsensusBundleValidationIssueSpec(
+                    "error", "invalid_decision_evidence_ref_type",
+                    f"Decision evidence ref at '{ref_label}' must be a dictionary",
+                    field_name=ref_label
+                ))
+                continue
+
+            required_ref_fields = [
+                "comparison_id",
+                "decision_status",
+                "reason_codes",
+                "evidence_stats",
+                "artifact_refs",
+            ]
             for f in required_ref_fields:
                 if f not in ref:
                     issues.append(ConsensusBundleValidationIssueSpec(
-                        "error", "missing_decision_evidence_ref_field", 
-                        f"Field '{f}' is missing in ref", 
+                        "error", "missing_decision_evidence_ref_field",
+                        f"Field '{f}' is missing in ref",
                         field_name=f"{ref_label}.{f}"
                     ))
-            
+
             # Nested stats
             stats = ref.get("evidence_stats")
             if isinstance(stats, dict):
-                stat_fields = ["support_margin", "has_conflict", "has_weak_support", "n_supporting_references", "n_conflicting_references", "n_competing_candidates"]
+                stat_fields = [
+                    "support_margin",
+                    "has_conflict",
+                    "has_weak_support",
+                    "n_supporting_references",
+                    "n_conflicting_references",
+                    "n_competing_candidates",
+                ]
                 for f in stat_fields:
                     if f not in stats:
                         issues.append(ConsensusBundleValidationIssueSpec(
-                            "error", "missing_evidence_stats_field", f"Stat '{f}' is missing",
+                            "error", "missing_evidence_stats_field",
+                            f"Stat '{f}' is missing",
                             field_name=f"{ref_label}.evidence_stats.{f}"
                         ))
-            
+
             # Nested artifacts
             art_refs = ref.get("artifact_refs")
             if isinstance(art_refs, dict):
                 art_fields = [
-                    "consensus_manifest_path", "consensus_handoff_contract_path", "consensus_decisions_json_path",
-                    "evidence_profiles_json_path", "consensus_decisions_csv_path", "report_summary_md_path"
+                    "consensus_manifest_path",
+                    "consensus_handoff_contract_path",
+                    "consensus_decisions_json_path",
+                    "evidence_profiles_json_path",
+                    "consensus_decisions_csv_path",
+                    "report_summary_md_path",
                 ]
                 for f in art_fields:
                     if f not in art_refs:
                         issues.append(ConsensusBundleValidationIssueSpec(
-                            "error", "missing_decision_artifact_ref", f"Artifact ref '{f}' is missing",
+                            "error", "missing_decision_artifact_ref",
+                            f"Artifact ref '{f}' is missing",
                             field_name=f"{ref_label}.artifact_refs.{f}"
                         ))
 
-            # 5. Top Refs nested validation (v0.19.4.3a)
-            for top_key in ["top_supporting_reference_refs", "top_conflicting_reference_refs"]:
-                if top_key in ref:
-                    top_list = ref.get(top_key)
-                    if not isinstance(top_list, (list, tuple)):
-                        issues.append(ConsensusBundleValidationIssueSpec(
-                            "error", "invalid_top_reference_refs_type",
-                            f"{top_key} must be a list or tuple",
-                            field_name=f"{ref_label}.{top_key}"
-                        ))
-                        continue
-                    
-                    for j, top_item in enumerate(top_list):
-                        item_label = f"{ref_label}.{top_key}[{j}]"
-                        if not isinstance(top_item, dict):
-                            issues.append(ConsensusBundleValidationIssueSpec(
-                                "error", "invalid_top_reference_ref_type",
-                                "Top reference item must be a dictionary",
-                                field_name=item_label
-                            ))
-                            continue
-                        
-                        for req_f in ["reference_dataset_id", "reference_comparison_id"]:
-                            if req_f not in top_item:
-                                issues.append(ConsensusBundleValidationIssueSpec(
-                                    "error", "missing_top_reference_ref_field",
-                                    f"Field '{req_f}' is missing in top reference",
-                                    field_name=f"{item_label}.{req_f}"
-                                ))
+            # Optional nested top refs: validate only if present
+            if "top_supporting_reference_refs" in ref:
+                _validate_top_reference_refs(
+                    ref.get("top_supporting_reference_refs"),
+                    f"{ref_label}.top_supporting_reference_refs",
+                    issues
+                )
+
+            if "top_conflicting_reference_refs" in ref:
+                _validate_top_reference_refs(
+                    ref.get("top_conflicting_reference_refs"),
+                    f"{ref_label}.top_conflicting_reference_refs",
+                    issues
+                )
 
 def _validate_decision_support_consistency(handoff: Dict[str, Any], issues: List[ConsensusBundleValidationIssueSpec]):
     """
@@ -324,15 +382,16 @@ def _validate_decision_support_consistency(handoff: Dict[str, Any], issues: List
     ds = handoff.get("decision_support")
     if not isinstance(ds, dict):
         return
-        
+
     ds_refs = ds.get("decision_evidence_refs", [])
     handoff_refs = handoff.get("comparison_decision_refs", [])
     included_ids = handoff.get("included_comparison_ids", [])
-    
+
     # 1. Case Count
     if len(ds_refs) != len(included_ids):
         issues.append(ConsensusBundleValidationIssueSpec(
-            "error", "decision_support_count_mismatch",
+            "error",
+            "decision_support_count_mismatch",
             f"Decision support refs count ({len(ds_refs)}) does not match included comparisons ({len(included_ids)})",
             field_name="handoff.decision_support.decision_evidence_refs"
         ))
@@ -341,60 +400,68 @@ def _validate_decision_support_consistency(handoff: Dict[str, Any], issues: List
     ds_summary = ds.get("summary", {})
     if ds_summary.get("n_decision_refs") != len(ds_refs):
         issues.append(ConsensusBundleValidationIssueSpec(
-            "error", "decision_support_summary_count_mismatch",
+            "error",
+            "decision_support_summary_count_mismatch",
             f"Summary n_decision_refs ({ds_summary.get('n_decision_refs')}) does not match actual refs count ({len(ds_refs)})",
             field_name="handoff.decision_support.summary.n_decision_refs"
         ))
 
     # 3. ID and Status consistency
-    ds_map = {r.get("comparison_id"): r for r in ds_refs if r.get("comparison_id")}
-    h_map = {r.get("comparison_id"): r for r in handoff_refs if r.get("comparison_id")}
-    
+    ds_map = {
+        r.get("comparison_id"): r
+        for r in ds_refs
+        if isinstance(r, dict) and r.get("comparison_id")
+    }
+    h_map = {
+        r.get("comparison_id"): r
+        for r in handoff_refs
+        if isinstance(r, dict) and r.get("comparison_id")
+    }
+
     for comp_id in included_ids:
         if comp_id not in ds_map:
             issues.append(ConsensusBundleValidationIssueSpec(
-                "error", "decision_support_comparison_id_mismatch",
+                "error",
+                "decision_support_comparison_id_mismatch",
                 f"Comparison ID '{comp_id}' missing in decision_support",
                 field_name="handoff.decision_support.decision_evidence_refs"
             ))
             continue
-        
-        # Status parity
+
         ds_status = ds_map[comp_id].get("decision_status")
         h_status = h_map.get(comp_id, {}).get("decision_status")
         if ds_status and h_status and ds_status != h_status:
             issues.append(ConsensusBundleValidationIssueSpec(
-                "error", "decision_support_status_mismatch",
+                "error",
+                "decision_support_status_mismatch",
                 f"Status mismatch for '{comp_id}': decision_support='{ds_status}', handoff='{h_status}'",
                 field_name=f"handoff.decision_support.decision_evidence_refs[ID={comp_id}].decision_status"
             ))
 
-    # 4. Artifact Path alignment (v0.19.4.3a: Exhaustive check)
+    # 4. Artifact Path alignment: check ALL refs, and check 4 contract paths
     bundle_refs = handoff.get("bundle_refs", {})
+    artifact_pairs = [
+        ("consensus_manifest_path", "consensus_manifest_path"),
+        ("consensus_handoff_contract_path", "consensus_handoff_contract_path"),
+        ("consensus_decisions_json_path", "consensus_decisions_path"),
+        ("evidence_profiles_json_path", "evidence_profiles_path"),
+    ]
+
     for i, ref in enumerate(ds_refs):
         if not isinstance(ref, dict):
             continue
-            
-        ref_id = ref.get("comparison_id", f"idx:{i}")
-        art_refs = ref.get("artifact_refs", {})
-        ref_path = f"handoff.decision_support.decision_evidence_refs[{i}].artifact_refs"
-        
-        # Check all 4 critical paths
-        mapping = [
-            ("consensus_manifest_path", "consensus_manifest_path"),
-            ("consensus_handoff_contract_path", "consensus_handoff_contract_path"),
-            ("consensus_decisions_json_path", "consensus_decisions_path"),
-            ("evidence_profiles_json_path", "evidence_profiles_path")
-        ]
-        
-        for ds_field, bundle_field in mapping:
-            ds_val = art_refs.get(ds_field)
-            br_val = bundle_refs.get(bundle_field)
-            if ds_val and br_val and ds_val != br_val:
-                 issues.append(ConsensusBundleValidationIssueSpec(
-                    "error", "decision_support_artifact_ref_mismatch",
-                    f"Path mismatch for '{ds_field}' in ref {ref_id}: support_block='{ds_val}', bundle_refs='{br_val}'",
-                    field_name=f"{ref_path}.{ds_field}"
+
+        art_refs = ref.get("artifact_refs")
+        if not isinstance(art_refs, dict):
+            continue
+
+        for ds_key, bundle_key in artifact_pairs:
+            if art_refs.get(ds_key) != bundle_refs.get(bundle_key):
+                issues.append(ConsensusBundleValidationIssueSpec(
+                    "error",
+                    "decision_support_artifact_ref_mismatch",
+                    f"Artifact ref mismatch at decision_evidence_refs[{i}]: '{ds_key}' != bundle_refs['{bundle_key}']",
+                    field_name=f"handoff.decision_support.decision_evidence_refs[{i}].artifact_refs.{ds_key}"
                 ))
 
 def validate_consensus_bundle(manifest_path_like: Any) -> ConsensusBundleValidationResult:

@@ -270,104 +270,137 @@ def test_validate_decision_support_consistency():
         res = validate_consensus_bundle(root)
         assert "decision_support_status_mismatch" in [i.code for i in res.issues]
 
-def test_validate_decision_support_exhaustive_artifact_consistency():
-    """
-    Ensure that mismatch in 2nd reference is detected.
-    Corresponds to spec 7.2.
-    """
+def test_validate_decision_support_artifact_ref_mismatch_all_refs():
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         _create_minimal_valid_files(root)
         handoff_path = root / "consensus_handoff_contract.json"
-        
+
         with open(handoff_path, "r") as f:
             handoff = json.load(f)
 
-        # Setup 2 references
         handoff["included_comparison_ids"] = ["c1", "c2"]
         handoff["comparison_decision_refs"] = [
             {"comparison_id": "c1", "decision_status": "consensus"},
-            {"comparison_id": "c2", "decision_status": "consensus"}
+            {"comparison_id": "c2", "decision_status": "no_consensus"},
         ]
-        
-        common_artifacts = {
+
+        good_art_refs = {
             "consensus_manifest_path": "consensus_manifest.json",
             "consensus_handoff_contract_path": "consensus_handoff_contract.json",
             "consensus_decisions_json_path": "consensus_decisions.json",
             "evidence_profiles_json_path": "evidence_profiles.json",
             "consensus_decisions_csv_path": "consensus_decisions.csv",
-            "report_summary_md_path": "report_summary.md"
+            "report_summary_md_path": "report_summary.md",
         }
-        common_stats = {
-            "support_margin": 0, "has_conflict": False, "has_weak_support": False,
-            "n_supporting_references": 0, "n_conflicting_references": 0, "n_competing_candidates": 0
+
+        bad_art_refs = {
+            "consensus_manifest_path": "consensus_manifest.json",
+            "consensus_handoff_contract_path": "consensus_handoff_contract.json",
+            "consensus_decisions_json_path": "WRONG_decisions.json",
+            "evidence_profiles_json_path": "WRONG_profiles.json",
+            "consensus_decisions_csv_path": "consensus_decisions.csv",
+            "report_summary_md_path": "report_summary.md",
         }
-        
-        ref1 = {"comparison_id": "c1", "decision_status": "consensus", "reason_codes": [], "evidence_stats": common_stats, "artifact_refs": common_artifacts.copy()}
-        ref2 = {"comparison_id": "c2", "decision_status": "consensus", "reason_codes": [], "evidence_stats": common_stats, "artifact_refs": common_artifacts.copy()}
-        
-        # Introduce mismatch in 2nd ref ONLY
-        ref2["artifact_refs"]["consensus_decisions_json_path"] = "WRONG_PATH.json"
-        
-        handoff["decision_support"]["decision_evidence_refs"] = [ref1, ref2]
+
+        handoff["decision_support"]["decision_evidence_refs"] = [
+            {
+                "comparison_id": "c1",
+                "decision_status": "consensus",
+                "reason_codes": [],
+                "evidence_stats": {
+                    "support_margin": 0.1,
+                    "has_conflict": False,
+                    "has_weak_support": False,
+                    "n_supporting_references": 1,
+                    "n_conflicting_references": 0,
+                    "n_competing_candidates": 0,
+                },
+                "artifact_refs": good_art_refs,
+            },
+            {
+                "comparison_id": "c2",
+                "decision_status": "no_consensus",
+                "reason_codes": [],
+                "evidence_stats": {
+                    "support_margin": 0.0,
+                    "has_conflict": True,
+                    "has_weak_support": False,
+                    "n_supporting_references": 1,
+                    "n_conflicting_references": 1,
+                    "n_competing_candidates": 1,
+                },
+                "artifact_refs": bad_art_refs,
+            },
+        ]
         handoff["decision_support"]["summary"]["n_decision_refs"] = 2
-        
+        handoff["decision_support"]["summary"]["n_consensus"] = 1
+        handoff["decision_support"]["summary"]["n_no_consensus"] = 1
+
         with open(handoff_path, "w") as f:
             json.dump(handoff, f)
-            
-        res = validate_consensus_bundle(root)
-        assert "decision_support_artifact_ref_mismatch" in [i.code for i in res.issues]
-        # Check field name points to ref[1]
-        target_issue = [i for i in res.issues if i.code == "decision_support_artifact_ref_mismatch"][0]
-        assert "[1].artifact_refs.consensus_decisions_json_path" in target_issue.field_name
 
-def test_validate_decision_support_malformed_top_refs():
-    """
-    Ensure malformed top-tier evidence lists are detected.
-    Corresponds to spec 7.3.
-    """
+        res = validate_consensus_bundle(root)
+        codes = [i.code for i in result.issues] if 'result' in locals() else [i.code for i in res.issues]
+        assert "decision_support_artifact_ref_mismatch" in codes
+
+        mismatch_fields = [
+            i.field_name for i in res.issues
+            if i.code == "decision_support_artifact_ref_mismatch"
+        ]
+        assert any("decision_evidence_refs[1].artifact_refs.consensus_decisions_json_path" in f for f in mismatch_fields)
+        assert any("decision_evidence_refs[1].artifact_refs.evidence_profiles_json_path" in f for f in mismatch_fields)
+
+def test_validate_decision_support_top_refs_validation():
     with TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         _create_minimal_valid_files(root)
         handoff_path = root / "consensus_handoff_contract.json"
-        
+
         with open(handoff_path, "r") as f:
             handoff = json.load(f)
 
         handoff["included_comparison_ids"] = ["c1"]
-        handoff["comparison_decision_refs"] = [{"comparison_id": "c1", "decision_status": "consensus"}]
-        
-        # Case 1: Wrong type (dict instead of list)
-        ref_bad_type = {
-            "comparison_id": "c1", "decision_status": "consensus", "reason_codes": [],
-            "evidence_stats": {
-                "support_margin": 0, "has_conflict": False, "has_weak_support": False,
-                "n_supporting_references": 0, "n_conflicting_references": 0, "n_competing_candidates": 0
-            },
-            "artifact_refs": {
-                "consensus_manifest_path": "consensus_manifest.json",
-                "consensus_handoff_contract_path": "consensus_handoff_contract.json",
-                "consensus_decisions_json_path": "consensus_decisions.json",
-                "evidence_profiles_json_path": "evidence_profiles.json",
-                "consensus_decisions_csv_path": "consensus_decisions.csv",
-                "report_summary_md_path": "report_summary.md"
-            },
-            "top_supporting_reference_refs": {"not": "a_list"}
-        }
-        handoff["decision_support"]["decision_evidence_refs"] = [ref_bad_type]
-        handoff["decision_support"]["summary"]["n_decision_refs"] = 1
-        
-        with open(handoff_path, "w") as f:
-            json.dump(handoff, f)
-        res = validate_consensus_bundle(root)
-        assert "invalid_top_reference_refs_type" in [i.code for i in res.issues]
+        handoff["comparison_decision_refs"] = [
+            {"comparison_id": "c1", "decision_status": "consensus"}
+        ]
 
-        # Case 2: Missing field in item
-        ref_missing_field = ref_bad_type.copy()
-        ref_missing_field["top_supporting_reference_refs"] = [{"reference_dataset_id": "DS1"}] # missing comp_id
-        handoff["decision_support"]["decision_evidence_refs"] = [ref_missing_field]
-        
+        handoff["decision_support"]["decision_evidence_refs"] = [
+            {
+                "comparison_id": "c1",
+                "decision_status": "consensus",
+                "reason_codes": [],
+                "evidence_stats": {
+                    "support_margin": 0.1,
+                    "has_conflict": False,
+                    "has_weak_support": False,
+                    "n_supporting_references": 1,
+                    "n_conflicting_references": 0,
+                    "n_competing_candidates": 0,
+                },
+                "artifact_refs": {
+                    "consensus_manifest_path": "consensus_manifest.json",
+                    "consensus_handoff_contract_path": "consensus_handoff_contract.json",
+                    "consensus_decisions_json_path": "consensus_decisions.json",
+                    "evidence_profiles_json_path": "evidence_profiles.json",
+                    "consensus_decisions_csv_path": "consensus_decisions.csv",
+                    "report_summary_md_path": "report_summary.md",
+                },
+                # わざと不正
+                "top_supporting_reference_refs": {"bad": "shape"},
+                "top_conflicting_reference_refs": [
+                    {"reference_dataset_id": "DS_ONLY"}
+                ],
+            }
+        ]
+        handoff["decision_support"]["summary"]["n_decision_refs"] = 1
+        handoff["decision_support"]["summary"]["n_consensus"] = 1
+
         with open(handoff_path, "w") as f:
             json.dump(handoff, f)
+
         res = validate_consensus_bundle(root)
-        assert "missing_top_reference_ref_field" in [i.code for i in res.issues]
+        codes = [i.code for i in res.issues]
+
+        assert "invalid_top_reference_refs_type" in codes
+        assert "missing_top_reference_ref_field" in codes
