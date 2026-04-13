@@ -28,8 +28,9 @@ class DegSummaryMetrics:
 @dataclass(frozen=True)
 class DegResultContext:
     """
-    Consolidated context for a DEG result, intended for UI display and export payload.
-    Bundles the statistical result with the precise conditions under which it was derived.
+    Consolidated Source of Truth (SOT) for a DEG result.
+    Designed for UI display and export payloads, reconciling statistical results 
+    with precise thresholds, sorting, and annotation settings.
     """
     comparison_column: str
     group_a: str

@@ -29,6 +29,14 @@ from iwa_rnaseq_reporter.legacy.feature_stats import (
 )
 from iwa_rnaseq_reporter.app.analysis_workspace_context import AnalysisWorkspaceContext
 
+"""
+Plot Input Foundation Mapping:
+- PCA Preview            -> AnalysisWorkspaceContext.analysis_matrix
+- Sample Correlation     -> AnalysisWorkspaceContext.analysis_matrix
+- Gene Search Profile    -> AnalysisWorkspaceContext.analysis_matrix (subset)
+- Top Variable Features  -> AnalysisWorkspaceContext.analysis_matrix
+"""
+
 
 def render_analysis_matrix_summary(workspace: AnalysisWorkspaceContext):
     """
@@ -65,6 +73,7 @@ def render_analysis_matrix_summary(workspace: AnalysisWorkspaceContext):
 def render_pca_preview_section(workspace: AnalysisWorkspaceContext):
     """
     Render Section 9: PCA Preview.
+    (SOT: workspace.analysis_matrix)
     """
     st.header("9. PCA Preview")
     
@@ -164,6 +173,7 @@ def render_pca_preview_section(workspace: AnalysisWorkspaceContext):
 def render_sample_correlation_section(workspace: AnalysisWorkspaceContext):
     """
     Render Section 10: Sample Correlation.
+    (SOT: workspace.analysis_matrix)
     """
     st.header("10. Sample Correlation")
     
@@ -204,6 +214,7 @@ def render_sample_correlation_section(workspace: AnalysisWorkspaceContext):
 def render_gene_search_section(workspace: AnalysisWorkspaceContext):
     """
     Render Section 11: Gene Search.
+    (SOT: workspace.analysis_matrix index)
     """
     st.header("11. Gene Search")
     
@@ -251,6 +262,7 @@ def render_gene_search_section(workspace: AnalysisWorkspaceContext):
 def render_top_variable_features_section(workspace: AnalysisWorkspaceContext):
     """
     Render Section 12: Top Variable Features.
+    (SOT: workspace.analysis_matrix)
     """
     st.header("12. Top Variable Features")
     

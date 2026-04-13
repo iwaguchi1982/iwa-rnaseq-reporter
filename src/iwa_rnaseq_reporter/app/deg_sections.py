@@ -48,6 +48,15 @@ from iwa_rnaseq_reporter.app.comparison_portfolio_handoff_builder import (
     build_comparison_portfolio_handoff_payload
 )
 
+"""
+Plot Input Foundation Mapping:
+- Volcano Plot           -> DegResultContext.result_table
+- Top Up/Down Preview    -> DegResultContext.result_table
+- DEG Results Table      -> DegResultContext.result_table
+- Threshold Summary      -> DegResultContext.threshold_snapshot
+- Metrics Summary        -> DegResultContext.summary_metrics
+"""
+
 
 def render_deg_comparison_design_section(
     workspace: AnalysisWorkspaceContext
@@ -161,6 +170,29 @@ def render_deg_comparison_design_section(
         return None, comparison_column, group_a, group_b
 
 
+def _build_volcano_plot_df(context: Any) -> pd.DataFrame:
+    """
+    Build a plotting-friendly DataFrame derived from DegResultContext (SOT).
+    Calculates significance categories and log-transformations for visualization.
+    """
+    p_thresh = context.threshold_snapshot.padj_threshold
+    fc_thresh = context.threshold_snapshot.abs_log2_fc_threshold
+    
+    plot_df = context.result_table.copy()
+    plot_df["-log10(padj)"] = -np.log10(plot_df["padj"].fillna(1.0).clip(lower=1e-300))
+    
+    def get_sig_category(row):
+        if row["padj"] < p_thresh and row["log2_fc"] > fc_thresh:
+            return f"Up in {context.group_a}"
+        elif row["padj"] < p_thresh and row["log2_fc"] < -fc_thresh:
+            return f"Down in {context.group_a}"
+        else:
+            return "Not Significant"
+
+    plot_df["Significance"] = plot_df.apply(get_sig_category, axis=1)
+    return plot_df
+
+
 def render_deg_analysis_section(
     workspace: AnalysisWorkspaceContext,
     deg_input_obj: Optional[Any],
@@ -234,29 +266,19 @@ def render_deg_analysis_section(
                 c4.metric("Max |log2FC|", f"{context.summary_metrics.max_abs_log2_fc:.3f}" if context.has_results else "NA")
 
                 # Volcano Plot
+                # SOT: context.result_table
                 st.subheader("Volcano Plot")
                 
                 if context.summary_metrics.n_sig_up == 0 and context.summary_metrics.n_sig_down == 0:
                     st.warning("⚠️ 現在の閾値では有意遺伝子は 0 件です。閾値を緩めるか、p_value ベースでの確認もご検討ください。")
                 
-                volcano_df = context.result_table.copy()
-                volcano_df["-log10(padj)"] = -np.log10(volcano_df["padj"].fillna(1.0).clip(lower=1e-300))
-                
-                def get_sig_category(row):
-                    if row["padj"] < p_thresh and row["log2_fc"] > fc_thresh:
-                        return f"Up in {context.group_a}"
-                    elif row["padj"] < p_thresh and row["log2_fc"] < -fc_thresh:
-                        return f"Down in {context.group_a}"
-                    else:
-                        return "Not Significant"
-
-                volcano_df["Significance"] = volcano_df.apply(get_sig_category, axis=1)
+                volcano_plot_df = _build_volcano_plot_df(context)
                 
                 hover_cols = ["display_label", "gene_symbol", "feature_id", "log2_fc", "padj", "p_value"]
-                hover_cols = [c for c in hover_cols if c in volcano_df.columns]
+                hover_cols = [c for c in hover_cols if c in volcano_plot_df.columns]
 
                 fig = px.scatter(
-                    volcano_df,
+                    volcano_plot_df,
                     x="log2_fc",
                     y="-log10(padj)",
                     color="Significance",
@@ -274,10 +296,10 @@ def render_deg_analysis_section(
                 fig.add_vline(x=fc_thresh, line_dash="dash", line_color="black", annotation_text=f"log2FC = {fc_thresh}")
                 fig.add_vline(x=-fc_thresh, line_dash="dash", line_color="black", annotation_text=f"log2FC = -{fc_thresh}")
                 
-                # Human-friendly Labeling
-                top_up = volcano_df[volcano_df["Significance"] == f"Up in {context.group_a}"].sort_values("padj").head(10)
-                top_down = volcano_df[volcano_df["Significance"] == f"Down in {context.group_a}"].sort_values("padj").head(10)
-                label_candidates = pd.concat([top_up, top_down])
+                # Human-friendly Labeling (derived from volcano_plot_df)
+                top_up_labels = volcano_plot_df[volcano_plot_df["Significance"] == f"Up in {context.group_a}"].sort_values("padj").head(10)
+                top_down_labels = volcano_plot_df[volcano_plot_df["Significance"] == f"Down in {context.group_a}"].sort_values("padj").head(10)
+                label_candidates = pd.concat([top_up_labels, top_down_labels])
                 
                 for _, row in label_candidates.iterrows():
                     fig.add_annotation(
@@ -290,6 +312,7 @@ def render_deg_analysis_section(
                 st.plotly_chart(fig, use_container_width=True)
 
                 # Top up/down preview
+                # SOT: context.result_table
                 st.subheader("Top Differentially Expressed Genes")
                 t1, t2 = st.columns(2)
                 
