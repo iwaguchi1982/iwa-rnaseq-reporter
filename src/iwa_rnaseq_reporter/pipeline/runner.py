@@ -16,6 +16,7 @@ from ..legacy.deg_input import DEGInput
 from ..legacy.deg_stats import compute_statistical_deg
 
 from ..pipeline.comparison_resolver import resolve_comparison_plan
+from ..validation.validate_comparison_spec import validate_comparison_spec
 
 logger = logging.getLogger(__name__)
 
@@ -139,6 +140,13 @@ def run_reporter_pipeline(matrix_spec: MatrixSpec, comparison_spec: ComparisonSp
     """
     started_at = datetime.now(timezone.utc).astimezone().isoformat()
     
+    # Prepare Output Directories
+    # 0. Validate Comparison Spec (Lightweight Contract Check)
+    v_result = validate_comparison_spec(comparison_spec, matrix_spec=matrix_spec)
+    if not v_result.is_valid:
+        errors = [i.message for i in v_result.issues if i.level == "error"]
+        raise ValueError(f"ComparisonSpec validation failed: {v_result.summary()} Issues: {errors}")
+
     # Prepare Output Directories
     outdir.mkdir(parents=True, exist_ok=True)
     dirs = {k: outdir / k for k in ["tables", "plots", "specs", "logs"]}
