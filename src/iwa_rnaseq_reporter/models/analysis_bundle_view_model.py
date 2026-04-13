@@ -9,7 +9,6 @@ class ReporterAnalysisBundle:
     as defined in the Handoff Profile (v0.12).
     """
     # Identification
-    run_id: str
     matrix_id: str
     
     # Bundle Manifest
@@ -27,7 +26,8 @@ class ReporterAnalysisBundle:
     sample_axis: str
     feature_id_system: str
     column_order_specimen_ids: List[str]
-    
+    run_id: str = "UNKNOWN"
+
     # Status & Descriptors (Optional/Nullable)
     source_quantifier_summary: Dict[str, Any] = field(default_factory=dict)
     feature_annotation_status: Optional[Dict[str, Any]] = None

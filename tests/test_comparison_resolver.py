@@ -177,7 +177,7 @@ SPEC_9999,SUBJ_9999,control
 
     comparison_spec = make_two_group_comparison()
 
-    with pytest.raises(ValueError, match="not found in matrix columns"):
+    with pytest.raises(ValueError, match="not found in the matrix columns"):
         resolve_comparison_plan(
             matrix_spec=matrix_spec,
             comparison_spec=comparison_spec,

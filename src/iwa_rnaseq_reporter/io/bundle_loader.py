@@ -44,7 +44,13 @@ def load_reporter_analysis_bundle(manifest_path: str) -> ReporterAnalysisBundle:
         # Summarize the bundle using the Counter's public summary helper
         summary = summarize_analysis_bundle_for_consumer(bundle)
         
-        return ReporterAnalysisBundle(**summary)
+        # Clean up summary to handle missing fields gracefully
+        # If run_id is None, letting the ReporterAnalysisBundle default handle it 
+        # (or provide it here explicitly)
+        if summary.get("run_id") is None:
+            summary["run_id"] = "UNKNOWN"
+            
+        return ReporterAnalysisBundle(**{k: v for k, v in summary.items() if v is not None})
         
     except Exception as e:
         raise RuntimeError(
