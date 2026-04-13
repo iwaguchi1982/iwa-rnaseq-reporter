@@ -94,6 +94,27 @@ def validate_comparison_spec(
                     f"Unsupported criteria keys for group {label!r}: {sorted(unknown)}",
                     field="groups", group_label=label
                 )
+            
+            # Check for effectively empty criteria values
+            for key, val in group.criteria.items():
+                is_empty = False
+                if val is None:
+                    is_empty = True
+                elif isinstance(val, str):
+                    if not val.strip():
+                        is_empty = True
+                elif isinstance(val, list):
+                    # Filter out effectively empty strings/Nones
+                    normalized = [str(v).strip() for v in val if v is not None and str(v).strip()]
+                    if not normalized:
+                        is_empty = True
+                
+                if is_empty:
+                    _append_issue(
+                        issues, "error", "empty_criteria_value",
+                        f"Criteria {key!r} for group {label!r} has an effectively empty value: {val!r}",
+                        field="groups", group_label=label
+                    )
 
     # 3. Unsupported Features (Fail-fast to prevent silent no-op)
     if comparison_spec.sample_selector:
@@ -119,8 +140,14 @@ def validate_comparison_spec(
             field="covariates"
         )
 
-    # 4. Cross-Spec Consistency
-    if matrix_spec and comparison_spec.input_matrix_id:
+    # 4. Cross-Spec Consistency and Required Fields
+    if not comparison_spec.input_matrix_id:
+        _append_issue(
+            issues, "error", "missing_input_matrix_id",
+            "ComparisonSpec.input_matrix_id is required",
+            field="input_matrix_id"
+        )
+    elif matrix_spec:
         if comparison_spec.input_matrix_id != matrix_spec.matrix_id:
             _append_issue(
                 issues, "error", "matrix_id_mismatch",

@@ -91,3 +91,30 @@ def test_validate_comparison_spec_invalid_type_and_group_count():
     assert not result.is_valid
     assert any(i.code == "unsupported_comparison_type" for i in result.issues)
     assert any(i.code == "invalid_group_count" for i in result.issues)
+
+def test_validate_comparison_spec_empty_criteria_value():
+    spec = make_valid_comparison()
+    # List of empty string
+    spec.groups[0].criteria = {"group_labels": [" "]}
+    result = validate_comparison_spec(spec)
+    assert not result.is_valid
+    assert any(i.code == "empty_criteria_value" for i in result.issues)
+
+    # Empty list
+    spec.groups[0].criteria = {"group_labels": []}
+    result = validate_comparison_spec(spec)
+    assert not result.is_valid
+    assert any(i.code == "empty_criteria_value" for i in result.issues)
+
+    # None
+    spec.groups[0].criteria = {"group_labels": None}
+    result = validate_comparison_spec(spec)
+    assert not result.is_valid
+    assert any(i.code == "empty_criteria_value" for i in result.issues)
+
+def test_validate_comparison_spec_missing_input_matrix_id():
+    spec = make_valid_comparison()
+    spec.input_matrix_id = ""
+    result = validate_comparison_spec(spec)
+    assert not result.is_valid
+    assert any(i.code == "missing_input_matrix_id" for i in result.issues)
