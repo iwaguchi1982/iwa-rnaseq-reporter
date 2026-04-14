@@ -45,6 +45,7 @@ def run_analysis_engine(plan: ResolvedComparisonPlan, matrix_df: pd.DataFrame, t
     deg_input = DEGInput(
         matrix_kind="count_matrix", 
         feature_matrix=matrix_df,
+        sample_table=pd.DataFrame({"sample_id": plan.group_a_matrix_columns + plan.group_b_matrix_columns}),
         group_column="comparison",
         group_a=plan.group_a_label,
         group_b=plan.group_b_label,
@@ -71,7 +72,10 @@ def run_analysis_engine(plan: ResolvedComparisonPlan, matrix_df: pd.DataFrame, t
             p_value=float(row["p_value"]) if not pd.isna(row.get("p_value")) else None,
             q_value=float(row["padj"]) if not pd.isna(row.get("padj")) else None,
             direction=str(row.get("direction", "")),
-            base_mean=(float(row.get("mean_group_a", 0)) + float(row.get("mean_group_b", 0)))/2.0
+            base_mean=(float(row.get("mean_group_a", 0)) + float(row.get("mean_group_b", 0)))/2.0,
+            statistic=float(row["statistic"]) if not pd.isna(row.get("statistic")) else None,
+            mean_group_a=float(row["mean_group_a"]) if not pd.isna(row.get("mean_group_a")) else None,
+            mean_group_b=float(row["mean_group_b"]) if not pd.isna(row.get("mean_group_b")) else None
         ))
         
     return ResultSpec(
@@ -89,7 +93,13 @@ def run_analysis_engine(plan: ResolvedComparisonPlan, matrix_df: pd.DataFrame, t
                 "padj_method": "fdr_bh",
                 "base_mean_definition": "mean(group_a_mean, group_b_mean)"
             }
-        )
+        ),
+        metadata={
+            "group_a_label": plan.group_a_label,
+            "group_b_label": plan.group_b_label,
+            "feature_type": plan.feature_type,
+            "normalization": plan.normalization
+        }
     )
 
 def build_report_payload(plan: ResolvedComparisonPlan, result_spec: ResultSpec, dirs: Dict[str, Path]) -> ReportPayloadSpec:

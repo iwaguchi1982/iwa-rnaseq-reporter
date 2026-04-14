@@ -11,6 +11,10 @@ class ResultRow:
     q_value: Optional[float] = None
     direction: Optional[str] = None
     base_mean: Optional[float] = None
+    # Extended fields for B40-04
+    statistic: Optional[float] = None
+    mean_group_a: Optional[float] = None
+    mean_group_b: Optional[float] = None
 
 @dataclass
 class ResultProvenance:
