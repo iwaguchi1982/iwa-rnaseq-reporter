@@ -113,7 +113,10 @@ def build_report_payload(plan: ResolvedComparisonPlan, result_spec: ResultSpec, 
         report_payload_id=f"RP_{plan.comparison_id}",
         project_id="UNKNOWN",
         title=f"RNA-Seq DEG Report: {plan.group_a_label} vs {plan.group_b_label}",
-        sections=[ReportSection("deg_table", "table", source_refs=[result_spec.result_id])],
+        sections=[
+            ReportSection("deg_table", "table", source_refs=[result_spec.result_id]),
+            ReportSection("volcano_plot", "plot", source_refs=[result_spec.result_id]),
+        ],
         artifacts=[ReportArtifact("table", str(deg_out_path.resolve()))],
         metadata={
             "group_a_label": plan.group_a_label,

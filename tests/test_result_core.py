@@ -65,3 +65,48 @@ def test_run_analysis_engine_populates_extended_fields(tmp_path):
     
     # 5. Verify Artifacts
     assert (tables_dir / "deg_results.tsv").exists()
+
+def test_build_report_payload_linkage(tmp_path):
+    from iwa_rnaseq_reporter.pipeline.runner import build_report_payload
+    from iwa_rnaseq_reporter.models.result import ResultSpec, ResultProvenance
+    from iwa_rnaseq_reporter.models.report_payload import ReportPayloadSpec
+    
+    plan = ResolvedComparisonPlan(
+        comparison_id="COMP_001",
+        input_matrix_id="MAT_001",
+        comparison_type="two_group",
+        analysis_intent="deg",
+        group_a_label="Control",
+        group_a_specimen_ids=["A1"],
+        group_b_label="Case",
+        group_b_specimen_ids=["B1"],
+        feature_type="gene"
+    )
+    
+    result_spec = ResultSpec(
+        schema_name="ResultSpec",
+        schema_version="0.1.0",
+        result_id="RES_001",
+        comparison_id="COMP_001",
+        result_kind="feature_level_statistics",
+        feature_type="gene",
+        rows=[],
+        provenance=ResultProvenance(method="test", method_version="1.0")
+    )
+    
+    dirs = {"tables": tmp_path}
+    (tmp_path / "deg_results.tsv").touch() # Mock the file existence
+    
+    payload = build_report_payload(plan, result_spec, dirs)
+    
+    assert isinstance(payload, ReportPayloadSpec)
+    
+    # Check sections
+    section_keys = [s.section_key for s in payload.sections]
+    assert "deg_table" in section_keys
+    assert "volcano_plot" in section_keys
+    
+    # Check source_refs linkage
+    volcano_section = next(s for s in payload.sections if s.section_key == "volcano_plot")
+    assert volcano_section.section_type == "plot"
+    assert "RES_001" in volcano_section.source_refs
