@@ -14,6 +14,10 @@ class ReportArtifact:
 
 @dataclass
 class ReportIdentitySpec:
+    """
+    Structured identity of the report comparison.
+    Serves as the primary source of truth for 'who' and 'what' is being compared.
+    """
     comparison_id: str
     comparison_label: str
     comparison_column: Optional[str] = None
@@ -24,6 +28,10 @@ class ReportIdentitySpec:
 
 @dataclass
 class ReportSummarySnapshot:
+    """
+    Calculated stats representing the 'truth' of the analysis result at the time of reporting.
+    Ensures consistent metric display across UI, export, and handoff.
+    """
     n_features_tested: int
     n_sig_up: Optional[int] = None
     n_sig_down: Optional[int] = None
@@ -31,6 +39,10 @@ class ReportSummarySnapshot:
 
 @dataclass
 class ReportDisplayContextSnapshot:
+    """
+    Snapshot of thresholds and display settings used to interpret the ResultSpec.
+    Crucial for report reconstruction and auditability.
+    """
     padj_threshold: Optional[float] = None
     abs_log2_fc_threshold: Optional[float] = None
     sort_by: Optional[str] = None
@@ -40,6 +52,10 @@ class ReportDisplayContextSnapshot:
 
 @dataclass
 class ReportNarrativeSlot:
+    """
+    Placeholder for human or AI generated commentary.
+    Linked to statistical core via source_refs.
+    """
     slot_key: str
     title: str
     text: Optional[str] = None
@@ -47,6 +63,11 @@ class ReportNarrativeSlot:
 
 @dataclass
 class ReportPayloadSpec:
+    """
+    The central Source of Truth (SOT) for a generated report.
+    Consolidates identity, summary metrics, display context, and skeletal narrative
+    to ensure consistency across different representation layers (UI, PDF, Export).
+    """
     schema_name: str
     schema_version: str
     report_payload_id: str

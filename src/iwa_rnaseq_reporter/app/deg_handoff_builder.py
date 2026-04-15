@@ -14,6 +14,9 @@ def build_deg_handoff_payload(
 ) -> DegHandoffPayload:
     """
     Build a formal handoff contract payload from an export payload.
+
+    FUTURE (B40-06+): Standardize identity and summary resolution via 
+    ReportPayloadSpec to ensure this contract matches the report source of truth.
     """
     summary = export_payload.summary
     metadata = export_payload.metadata

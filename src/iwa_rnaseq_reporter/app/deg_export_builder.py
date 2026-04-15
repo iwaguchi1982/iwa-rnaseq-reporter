@@ -12,6 +12,9 @@ def build_deg_export_payload(
 ) -> DegExportPayload:
     """
     Transform an internal result context into an external export payload.
+    
+    FUTURE (B40-06+): This module should transition to derive its truth from 
+    ReportPayloadSpec to ensure consistency across UI, export, and handoff.
     """
     # 1. Build Summary Spec
     # If deg_input_obj is provided, we can get actual group sample counts.

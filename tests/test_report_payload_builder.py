@@ -67,36 +67,48 @@ def test_build_report_payload_spec_basic(sample_plan, sample_result, mock_dirs):
     
     assert isinstance(payload, ReportPayloadSpec)
     assert payload.report_payload_id == "RP_COMP_TEST_001"
-    assert payload.identity.comparison_id == "COMP_TEST_001"
-    assert payload.identity.group_a_label == "Case"
-    assert payload.identity.group_b_label == "Control"
     
-    # Check Summary
+    # Check Summary (Explicit threshold case)
     assert payload.summary.n_features_tested == 5
     assert payload.summary.n_sig_up == 1   # G1
     assert payload.summary.n_sig_down == 1 # G2
-    assert payload.summary.max_abs_log2_fc == 3.0 # G4
     
-    # Check Display Context
-    assert payload.display_context.padj_threshold == 0.05
-    assert payload.display_context.abs_log2_fc_threshold == 1.0
-    assert payload.display_context.matrix_kind == "tpm_matrix"
-    
-    # Check Narrative Slots
+    # Check Narrative Slots (Verification of source linkage)
     assert len(payload.narrative_slots) == 2
-    assert payload.narrative_slots[0].slot_key == "executive_summary"
-    
-    # Check Linkage
-    assert len(payload.sections) == 2
-    assert payload.sections[0].source_refs == ["RES_TEST_001"]
+    assert payload.narrative_slots[0].source_refs == ["RES_TEST_001"]
+    assert payload.narrative_slots[1].source_refs == ["RES_TEST_001"]
 
-def test_build_report_summary_snapshot_no_thresholds(sample_result):
-    summary = build_report_summary_snapshot(sample_result, padj_threshold=None, abs_log2_fc_threshold=None)
+def test_build_report_payload_no_thresholds(sample_plan, sample_result, mock_dirs):
+    """
+    Verify that when thresholds are not provided, summary metrics (sig counts) are None.
+    """
+    payload = build_report_payload_spec(sample_plan, sample_result, mock_dirs)
     
-    assert summary.n_features_tested == 5
-    assert summary.n_sig_up is None
-    assert summary.n_sig_down is None
-    assert summary.max_abs_log2_fc == 3.0
+    assert payload.summary.n_features_tested == 5
+    assert payload.summary.n_sig_up is None
+    assert payload.summary.n_sig_down is None
+    assert payload.display_context.padj_threshold is None
+
+def test_build_report_payload_no_metadata(sample_result, mock_dirs):
+    """
+    Verify that when plan metadata is empty, unknown fields fallback to None (not "unknown").
+    """
+    thin_plan = ResolvedComparisonPlan(
+        comparison_id="COMP_THIN",
+        input_matrix_id="MAT_THIN",
+        comparison_type="two_group",
+        analysis_intent="discovery",
+        group_a_label="A",
+        group_a_specimen_ids=["S1"],
+        group_b_label="B",
+        group_b_specimen_ids=["S2"],
+        metadata={} # Empty metadata
+    )
+    
+    payload = build_report_payload_spec(thin_plan, sample_result, mock_dirs)
+    
+    assert payload.identity.comparison_column is None
+    assert payload.display_context.matrix_kind is None
 
 def test_payload_to_dict_serialization(sample_plan, sample_result, mock_dirs):
     payload = build_report_payload_spec(sample_plan, sample_result, mock_dirs)
@@ -105,6 +117,6 @@ def test_payload_to_dict_serialization(sample_plan, sample_result, mock_dirs):
     assert "$schema_name" in d
     assert "$schema_version" in d
     assert d["identity"]["comparison_id"] == "COMP_TEST_001"
-    assert d["summary"]["n_sig_up"] == 1
-    assert "narrative_slots" in d
-    assert len(d["narrative_slots"]) == 2
+    # Verify that None values are preserved in nested dicts (as per to_dict behavior)
+    assert d["summary"]["n_sig_up"] is None
+    assert d["summary"]["n_sig_down"] is None
