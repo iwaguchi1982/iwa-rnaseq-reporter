@@ -16,6 +16,7 @@ from ..legacy.deg_input import DEGInput
 from ..legacy.deg_stats import compute_statistical_deg
 
 from ..pipeline.comparison_resolver import resolve_comparison_plan
+from ..pipeline.report_payload_builder import build_report_payload_spec
 from ..validation.validate_comparison_spec import validate_comparison_spec
 
 logger = logging.getLogger(__name__)
@@ -102,29 +103,6 @@ def run_analysis_engine(plan: ResolvedComparisonPlan, matrix_df: pd.DataFrame, t
         }
     )
 
-def build_report_payload(plan: ResolvedComparisonPlan, result_spec: ResultSpec, dirs: Dict[str, Path]) -> ReportPayloadSpec:
-    """
-    Step 4: Emit (Report) - Build display payload.
-    """
-    deg_out_path = dirs["tables"] / "deg_results.tsv"
-    return ReportPayloadSpec(
-        schema_name="ReportPayloadSpec",
-        schema_version="0.1.0",
-        report_payload_id=f"RP_{plan.comparison_id}",
-        project_id="UNKNOWN",
-        title=f"RNA-Seq DEG Report: {plan.group_a_label} vs {plan.group_b_label}",
-        sections=[
-            ReportSection("deg_table", "table", source_refs=[result_spec.result_id]),
-            ReportSection("volcano_plot", "plot", source_refs=[result_spec.result_id]),
-        ],
-        artifacts=[ReportArtifact("table", str(deg_out_path.resolve()))],
-        metadata={
-            "group_a_label": plan.group_a_label,
-            "group_b_label": plan.group_b_label,
-            "group_a_size": len(plan.group_a_matrix_columns),
-            "group_b_size": len(plan.group_b_matrix_columns),
-        }
-    )
 
 def build_execution_run(plan: ResolvedComparisonPlan, result_spec: ResultSpec, payload_spec: ReportPayloadSpec, dirs: Dict[str, Path], started_at: str, dry_run: bool) -> ExecutionRunSpec:
     """
@@ -179,7 +157,7 @@ def run_reporter_pipeline(matrix_spec: MatrixSpec, comparison_spec: ComparisonSp
     result_spec = run_analysis_engine(resolved_plan, matrix_df, dirs["tables"])
 
     # 4. Emit Results (Report & Execution Records)
-    payload_spec = build_report_payload(resolved_plan, result_spec, dirs)
+    payload_spec = build_report_payload_spec(resolved_plan, result_spec, dirs)
     run_spec = build_execution_run(resolved_plan, result_spec, payload_spec, dirs, started_at, dry_run)
     
     return result_spec, payload_spec, run_spec
